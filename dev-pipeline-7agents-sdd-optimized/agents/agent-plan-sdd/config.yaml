@@ -1,0 +1,27 @@
+name: agent-plan-sdd
+display_name: 方案设计SDD Subagent
+type: agent-skill
+priority: 80
+run_mode: temp
+bind_stage: writing-plans
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller-sdd
+permissions:
+  - file:read
+  - file:write
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - demand_doc_id
+output_deliverables:
+  # SDD缓存调度标识
+  - plan_doc_id
+  - output_file_hash
+  # 原始落地实体文件，向下兼容旧流程
+  - plan_summary.md
+  - full_tech_plan.md

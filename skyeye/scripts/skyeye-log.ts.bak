@@ -1,0 +1,338 @@
+/**
+ * SkyEye 天网日志查询：POST /personal-open-api/query/skynet/log，支持时间范围、级别、环境、模块、大类小类、过滤等。
+ */
+
+import { readCache, retryAuthRefresh, tryAutoLogin, getSkyEyeAuthHeaders, type SkyEyeCacheEntry } from "./skyeye-auth.ts";
+import { SkyEyeApi } from "./skyeye-api.ts";
+import { logVerbose } from "./verbose.ts";
+
+/** CLI 可选的 priority 字符串；空或「所有」表示不按等级过滤 */
+export type LogPriorityArg = "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL" | "" | "所有";
+
+/** 日志等级数值：DEBUG(4), INFO(3), WARN(2), ERROR(1), FATAL(0)；不传/空表示全部 */
+const PRIORITY_LEVEL_MAP: Record<string, number> = {
+  DEBUG: 4,
+  INFO: 3,
+  WARN: 2,
+  ERROR: 1,
+  FATAL: 0,
+};
+
+/**
+ * 将 --priority 解析为 API 所需的等级数值。
+ * 支持名称：DEBUG→4, INFO→3, WARN→2, ERROR→1, FATAL→0。
+ * 支持数字：0、1、2、3、4 直接使用；空或「所有」→ undefined（查全部）。
+ * 最终请求体里传值为 0–4 这类数字。
+ */
+export function parsePriorityToLevel(raw: string | undefined): number | undefined {
+  const s = (raw ?? "").trim();
+  if (s === "" || s === "所有") return undefined;
+  const num = Number(s);
+  if (Number.isFinite(num) && num >= 0 && num <= 4 && Math.floor(num) === num) return num;
+  const level = PRIORITY_LEVEL_MAP[s.toUpperCase()];
+  return level !== undefined ? level : undefined;
+}
+
+/** 高级搜索项：filter 字段、compare 比较符（如 nlike）、value 取值数组 */
+export interface AdvancedSearchItem {
+  filter: string;
+  compare: string;
+  value: string[];
+}
+
+export interface SkyEyeLogQueryParams {
+  beginTime?: string;
+  endTime?: string;
+  minutes?: number;
+  /** 日志等级数值 0–4；不传表示全部 */
+  priority?: number;
+  env?: string;
+  envName?: string;
+  modules?: string[];
+  categories?: string[];
+  subCategories?: string[];
+  filter1s?: string[];
+  filter2s?: string[];
+  appUks?: string[];
+  contextId?: string;
+  ips?: string[];
+  indexContext?: string;
+  pageSize?: number;
+  /** 高级搜索条件，默认 []。例：indexContext nlike ["msg1"] 表示不包含 msg1 */
+  advancedSearchItems?: AdvancedSearchItem[];
+  /** 查询区域：原始 CLI，经 `SkyEyeApi.normalizeQueryRegion` 发往接口 */
+  queryRegion?: string;
+  /**
+   * 默认 false。为 true 时不把 `env` 写入 POST body（不按单环境做数据筛选，同 queryRegion 下多环境数据可一并返回）；URL 查询参数 `?env=` 仍取自 CLI `--env`。
+   * 为 false 时请求体携带 `env`，仅查该环境。
+   */
+  ignoreEnvParamAsDataFilter?: boolean;
+}
+
+function parseArgvValue(flag: string): string | undefined {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === flag && i + 1 < args.length) return args[i + 1]?.trim();
+    if (arg.startsWith(flag + "=")) return arg.slice(flag.length + 1).trim();
+  }
+  return undefined;
+}
+
+/**
+ * 解析数组参数（modules/categories/filter1s/filter2s/appUks/ips）：
+ * - 逗号分隔解析为多个：如 "tcbase.java.skynetlogv2,infrascs.java.skyeye.api" → ["tcbase.java.skynetlogv2", "infrascs.java.skyeye.api"]
+ * - 或原生 JSON 数组：'["a","b","c"]'
+ * - 或多次 --flag val，合并为数组。
+ */
+function parseArgvArray(flag: string): string[] {
+  const args = process.argv.slice(2);
+  const values: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    let v: string | undefined;
+    if (arg === flag && i + 1 < args.length) {
+      v = String(args[i + 1] ?? "").trim();
+      i++;
+    } else if (arg.startsWith(flag + "=")) {
+      v = arg.slice(flag.length + 1).trim();
+    } else {
+      continue;
+    }
+    if (!v) continue;
+    if (v.startsWith("[")) {
+      try {
+        const arr = JSON.parse(v) as unknown;
+        if (Array.isArray(arr)) values.push(...arr.map((x) => String(x).trim()).filter(Boolean));
+      } catch {
+        values.push(...v.split(",").map((s) => s.trim()).filter(Boolean));
+      }
+    } else if (v.includes(",")) {
+      values.push(...v.split(",").map((s) => s.trim()).filter(Boolean));
+    } else {
+      values.push(v.trim());
+    }
+  }
+  return values;
+}
+
+function parseArgvNumber(flag: string): number | undefined {
+  const v = parseArgvValue(flag);
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** 解析 `--flag` / `--flag true|false` / `--flag=true|false`，未出现时返回 defaultValue；单独 `--flag` 视为 true */
+function parseArgvBooleanFlag(flag: string, defaultValue: boolean): boolean {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === flag) {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        const t = next.trim().toLowerCase();
+        i++;
+        if (t === "true" || t === "1") return true;
+        if (t === "false" || t === "0") return false;
+      }
+      return true;
+    }
+    if (arg.startsWith(flag + "=")) {
+      const t = arg.slice(flag.length + 1).trim().toLowerCase();
+      if (t === "true" || t === "1") return true;
+      if (t === "false" || t === "0") return false;
+      return defaultValue;
+    }
+  }
+  return defaultValue;
+}
+
+/**
+ * 解析 --advancedSearchItems：支持 JSON 数组或多次传单个 JSON 对象。
+ * 例：--advancedSearchItems '[{"filter":"indexContext","compare":"nlike","value":["msg1"]}]'
+ * 或多次：--advancedSearchItems '{"filter":"indexContext","compare":"nlike","value":["msg1"]}' --advancedSearchItems '{"filter":"indexContext","compare":"nlike","value":["msg12"]}'
+ */
+function parseArgvAdvancedSearchItems(flag: string): AdvancedSearchItem[] {
+  const args = process.argv.slice(2);
+  const items: AdvancedSearchItem[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== flag || i + 1 >= args.length) continue;
+    const v = String(args[i + 1] ?? "").trim();
+    i++;
+    if (!v) continue;
+    try {
+      const parsed = JSON.parse(v) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const x of parsed) {
+          if (x && typeof x === "object" && "filter" in x && "compare" in x && "value" in x) {
+            items.push({
+              filter: String((x as AdvancedSearchItem).filter),
+              compare: String((x as AdvancedSearchItem).compare),
+              value: Array.isArray((x as AdvancedSearchItem).value)
+                ? (x as AdvancedSearchItem).value.map(String)
+                : [String((x as AdvancedSearchItem).value)],
+            });
+          }
+        }
+      } else if (parsed && typeof parsed === "object" && "filter" in parsed && "compare" in parsed && "value" in parsed) {
+        const x = parsed as AdvancedSearchItem;
+        items.push({
+          filter: String(x.filter),
+          compare: String(x.compare),
+          value: Array.isArray(x.value) ? x.value.map(String) : [String(x.value)],
+        });
+      }
+    } catch {
+      /* 忽略非法 JSON */
+    }
+  }
+  return items;
+}
+
+/** 解析 CLI 为查询参数（不包含 begin/end，由 caller 根据 minutes 或 begin/end 填充） */
+export function getLogQueryParamsFromArgv(): SkyEyeLogQueryParams {
+  const begin = parseArgvValue("--begin") ?? parseArgvValue("--beginTime");
+  const end = parseArgvValue("--end") ?? parseArgvValue("--endTime");
+  const minutes = parseArgvNumber("--minutes");
+  const priorityRaw = parseArgvValue("--priority") ?? "";
+  const priority = parsePriorityToLevel(priorityRaw);
+  const pageSize = parseArgvNumber("--pageSize") ?? 5;
+
+  return {
+    beginTime: begin,
+    endTime: end,
+    minutes,
+    priority,
+    env: parseArgvValue("--env"),
+    envName: parseArgvValue("--envName"),
+    modules: parseArgvArray("--modules").length ? parseArgvArray("--modules") : undefined,
+    categories: parseArgvArray("--categories").length ? parseArgvArray("--categories") : undefined,
+    subCategories: parseArgvArray("--subCategories").length ? parseArgvArray("--subCategories") : undefined,
+    filter1s: parseArgvArray("--filter1s").length ? parseArgvArray("--filter1s") : undefined,
+    filter2s: parseArgvArray("--filter2s").length ? parseArgvArray("--filter2s") : undefined,
+    appUks: parseArgvArray("--appUks").length ? parseArgvArray("--appUks") : [],
+    contextId: parseArgvValue("--contextId"),
+    ips: parseArgvArray("--ips").length ? parseArgvArray("--ips") : undefined,
+    indexContext: parseArgvValue("--indexContext"),
+    pageSize,
+    advancedSearchItems: parseArgvAdvancedSearchItems("--advancedSearchItems").length
+      ? parseArgvAdvancedSearchItems("--advancedSearchItems")
+      : [],
+    queryRegion: parseArgvValue("--queryRegion")?.trim(),
+    ignoreEnvParamAsDataFilter: parseArgvBooleanFlag("--ignoreEnvParamAsDataFilter", false),
+  };
+}
+
+function buildLogRequestBody(params: SkyEyeLogQueryParams): Record<string, unknown> {
+  const { beginTime, endTime } = SkyEyeApi.resolveQueryTimeRange({
+    beginTime: params.beginTime,
+    endTime: params.endTime,
+    minutes: params.minutes,
+  });
+
+  const body: Record<string, unknown> = {
+    pageSize: params.pageSize ?? 5,
+  };
+  body.beginTime = beginTime;
+  body.endTime = endTime;
+  if (params.priority !== undefined) body.priority = params.priority;
+  if (params.env && params.ignoreEnvParamAsDataFilter !== true) body.env = params.env;
+  if (params.envName) body.envName = params.envName;
+  if (params.modules?.length) body.modules = params.modules;
+  if (params.categories?.length) body.categories = params.categories;
+  if (params.subCategories?.length) body.subCategories = params.subCategories;
+  if (params.filter1s?.length) body.filter1s = params.filter1s;
+  if (params.filter2s?.length) body.filter2s = params.filter2s;
+  if (params.appUks?.length) body.appUks = params.appUks;
+  if (params.contextId) body.contextId = params.contextId;
+  if (params.ips?.length) body.ips = params.ips;
+  if (params.indexContext) body.indexContext = params.indexContext;
+  body.advancedSearchItems = params.advancedSearchItems ?? [];
+  body.queryRegion = SkyEyeApi.normalizeQueryRegion(params.queryRegion);
+
+  return body;
+}
+
+export async function querySkyEyeLog(
+  entry: SkyEyeCacheEntry,
+  params: SkyEyeLogQueryParams
+): Promise<{ success?: boolean; code?: number; result?: unknown; message?: string } | undefined> {
+  const body = buildLogRequestBody(params);
+  const hasAppUks = Array.isArray(body.appUks) && body.appUks.length > 0;
+  if (!hasAppUks) {
+    console.error("queryLog 要求至少填写一个应用标识：--appUks <...>");
+    process.exit(1);
+  }
+  const envQuery = String(params.env ?? "").trim();
+  if (envQuery === "" || envQuery === "undefined") {
+    console.error("queryLog 要求指定一个环境：--env <...>");
+    process.exit(1);
+  }
+  const apiUrl =
+    SkyEyeApi.LOG_API +
+    "?env=" +
+    encodeURIComponent(envQuery) +
+    "&queryRegion=" +
+    encodeURIComponent(String(body.queryRegion)) +
+    "&appUks=" +
+    encodeURIComponent(params.appUks?.join(",") ?? "");
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: getSkyEyeAuthHeaders(entry),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
+  });
+
+  if (!res.ok) {
+    console.error("失败: 日志查询接口返回状态码", res.status);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as { success?: boolean; code?: number; result?: unknown; message?: string };
+  if (data?.code === 1) {
+    return data;
+  }
+  if (data?.success !== true) {
+    console.error("查询失败:", data?.message ?? data);
+    process.exit(1);
+  }
+  return data;
+}
+
+function printLogResult(data: { success?: boolean; code?: number; result?: unknown; message?: string }): void {
+  console.log(JSON.stringify(data, null, 2));
+}
+
+export async function runQueryLog(): Promise<void> {
+  let entry = readCache();
+  if (!entry) {
+    entry = tryAutoLogin();
+  }
+  if (!entry) {
+    console.error("未找到缓存的 token，请先执行: skyeye auth login 或 skyeye auth --personalAccessToken <key>");
+    process.exit(1);
+  }
+
+  const params = getLogQueryParamsFromArgv();
+  logVerbose("runQueryLog params", params);
+  let data = await querySkyEyeLog(entry, params);
+  if (data?.code === 1) {
+    const newEntry = await retryAuthRefresh();
+    if (newEntry) {
+      data = await querySkyEyeLog(newEntry, params);
+    }
+  }
+  if (data?.code === 1) {
+    console.error("222权限认证过期，请执行 skyeye auth login 或 skyeye auth --personalAccessToken <key> 更新");
+    process.exit(1);
+  }
+  if (data?.success === true) {
+    printLogResult(data);
+    return;
+  }
+  if (data) {
+    console.error("查询失败:", data?.message ?? data);
+  }
+  process.exit(1);
+}

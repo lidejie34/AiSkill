@@ -1,0 +1,25 @@
+name: agent-git
+display_name: Git工作区管理Agent
+type: agent-skill
+description: 独占所有Git底层执行操作，仅执行指令，无用户决策权限
+priority: 70
+run_mode: temp
+bind_stage: [using-git-worktrees-init, using-git-worktrees-commit-push-merge]
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - shell:git
+  - context:read-only
+deny_permissions:
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - target_repo_info
+  - dev_branch
+  - base_branch
+output_deliverables:
+  - git_op_log.json
+  - conflict_flag

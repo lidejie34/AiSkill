@@ -1,0 +1,27 @@
+name: agent-matrix-sdd
+display_name: Matrix任务拆解SDD Subagent
+type: agent-skill
+priority: 70
+run_mode: temp
+bind_stage: matrix
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller-sdd
+permissions:
+  - file:read
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - demand_doc_id
+  - plan_doc_id
+output_deliverables:
+  # SDD缓存调度字段
+  - matrix_task_id
+  - output_file_hash
+  # 实体文件+业务标记，向下兼容旧流程
+  - matrix_task_meta.json
+  - skip_flag

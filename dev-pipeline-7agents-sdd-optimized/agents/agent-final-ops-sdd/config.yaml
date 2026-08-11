@@ -1,0 +1,28 @@
+name: agent-final-ops-sdd
+display_name: 部署&文档归档清理SDD Subagent
+type: agent-skill
+priority: 60
+run_mode: temp
+bind_stage: [jean, file-operator]
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller-sdd
+permissions:
+  - file:read
+  - file:write
+  - file:delete
+  - deploy:execute
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - user:dialog
+input_deps:
+  - dev_branch
+  - all_doc_list_id
+output_deliverables:
+  # SDD缓存调度元数据字段
+  - ops_doc_id
+  - output_file_hash
+  # 本地实体日志文件，向下兼容旧架构
+  - deploy_result.json
+  - doc_clean_log.json

@@ -1,0 +1,28 @@
+name: agent-git-sdd
+display_name: Git工作区管理SDD Subagent
+type: agent-skill
+priority: 70
+run_mode: temp
+bind_stage: [using-git-worktrees-init, using-git-worktrees-commit-push-merge]
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller-sdd
+permissions:
+  - file:read
+  - shell:git
+  - context:read-only
+deny_permissions:
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - target_repo_info_id
+  - dev_branch
+  - base_branch
+output_deliverables:
+  # SDD缓存调度字段
+  - git_op_id
+  - output_file_hash
+  # 实体文件、业务状态标记 向下兼容
+  - git_op_log.json
+  - conflict_flag

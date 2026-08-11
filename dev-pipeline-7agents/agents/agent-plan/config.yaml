@@ -1,0 +1,24 @@
+name: agent-plan
+display_name: 方案设计Agent
+type: agent-skill
+description: 依赖需求文档输出技术方案，禁止编写业务代码
+priority: 80
+run_mode: temp
+bind_stage: writing-plans
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - file:write
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - demand_doc
+output_deliverables:
+  - plan_summary.md
+  - full_tech_plan.md

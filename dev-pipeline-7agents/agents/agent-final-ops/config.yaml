@@ -1,0 +1,25 @@
+name: agent-final-ops
+display_name: 部署&文档归档Agent
+type: agent-skill
+description: 流水线收尾，环境部署、需求/设计文档清理
+priority: 60
+run_mode: temp
+bind_stage: [jean, file-operator]
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - file:write
+  - file:delete
+  - deploy:execute
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - user:dialog
+input_deps:
+  - dev_branch
+  - all_doc_list
+output_deliverables:
+  - deploy_result.json
+  - doc_clean_log.json

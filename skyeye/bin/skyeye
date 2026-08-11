@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# 包装脚本：不依赖 npm link，将本 skill 的 bin 目录加入 PATH 后即可在终端使用 skyeye
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec node "$SCRIPT_DIR/skyeye.cjs" "$@"

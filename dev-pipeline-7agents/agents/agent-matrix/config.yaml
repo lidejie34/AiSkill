@@ -1,0 +1,24 @@
+name: agent-matrix
+display_name: Matrix任务拆解Agent
+type: agent-skill
+description: 纯项目任务管理，与代码、部署完全解耦
+priority: 70
+run_mode: temp
+bind_stage: matrix
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - demand_doc
+  - tech_plan_doc
+output_deliverables:
+  - matrix_task_id
+  - task_meta_info.json

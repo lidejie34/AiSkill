@@ -1,0 +1,136 @@
+name: dev-pipeline-7agents-sdd-optimized
+display_name: SDD分级优化7Agent融合流水线主调度
+description: SDD三级自动分级、缓存复用、增量审查、白名单优化，兼顾质量与执行效率
+priority: 100
+auto_bootstrap: true
+override_default_flow: true
+replace_skill: using-superpowers
+allow_external_skills: true
+external_skills:
+  - tiexin-doc
+run_mode: once
+permissions:
+  - file:read
+  - file:write
+  - file:delete
+  - shell:git
+  - shell:gh
+  - shell:npm
+  - deploy:execute
+  - context:global-rw
+  - user:dialog-all
+global_constraints:
+  disable_skylog: true
+  all_risky_ops_mandatory_confirm: true
+  forbid_skip_demand_design: true
+  forbid_zero_test_release: true
+  rollback_rule: single_reject_rollback_stage, double_reject_support_terminate
+
+# ========== SDD分级优化核心配置 ==========
+sdd_config:
+  enable_subagent_isolate: true
+  # SDD等级 auto/full/lite/off
+  sdd_level: auto
+  # 自动切换lite模式判定条件
+  lite_trigger:
+    modify_file_count_le: 3
+    allow_only_doc_change: true
+    allow_single_line_hotfix: true
+    allow_poc_prototype: true
+  # 审查白名单：执行完不跑spec+quality双审
+  review_skip_agent_list:
+    - agent-matrix
+  # 缓存开关
+  enable_doc_id_cache: true
+  enable_review_hash_cache: true
+  enable_context_snapshot: true
+  # 审查模式分级
+  full_review: ["spec_review", "quality_review"]
+  lite_review: ["composite_single_review"]
+  off_review: []
+  # TDD细分任务阈值
+  tdd_split_file_threshold: 5
+  # 增量diff审查
+  enable_increment_review: true
+
+# 注册全部7个Agent
+agent_register_list:
+  - agent_ref: agent-pipeline-controller-sdd
+    agent_config: file://./agents/agent-pipeline-controller-sdd/config.yaml
+  - agent_ref: agent-demand-sdd
+    agent_config: file://./agents/agent-demand-sdd/config.yaml
+  - agent_ref: agent-plan-sdd
+    agent_config: file://./agents/agent-plan-sdd/config.yaml
+  - agent_ref: agent-matrix-sdd
+    agent_config: file://./agents/agent-matrix-sdd/config.yaml
+  - agent_ref: agent-git-sdd
+    agent_config: file://./agents/agent-git-sdd/config.yaml
+  - agent_ref: agent-tdd-sdd
+    agent_config: file://./agents/agent-tdd-sdd/config.yaml
+  - agent_ref: agent-final-ops-sdd
+    agent_config: file://./agents/agent-final-ops-sdd/config.yaml
+
+# 固定串行流程
+pipeline_flow_sequence:
+  step_1:
+    dispatch_agent: agent-pipeline-controller-sdd
+    action: init_global_context && sdd_level_auto_detect && build_task_graph && init_cache_pool
+  step_2:
+    dispatch_agent: agent-demand-sdd
+    pre_condition: true
+    block_rule: audit fail re-run; double reject terminate
+    post_action: sdd_review_by_level
+  step_3:
+    dispatch_agent: agent-plan-sdd
+    pre_condition: agent-demand-sdd pass
+    block_rule: audit fail re-run; double reject terminate
+    post_action: sdd_review_by_level
+  step_4:
+    dispatch_agent: agent-matrix-sdd
+    pre_condition: agent-plan-sdd pass
+    block_rule: no block
+    post_action: sdd_review_by_level
+  step_5:
+    dispatch_agent: agent-git-sdd
+    pre_condition: agent-plan-sdd pass && exist .git
+    block_rule: git fail pause
+    post_action: sdd_review_by_level
+  step_6:
+    dispatch_agent: agent-tdd-sdd
+    pre_condition: agent-plan-sdd pass
+    block_rule: zero_test block pipeline
+    post_action: sdd_review_by_level
+  step_7:
+    dispatch_agent: agent-git-sdd
+    pre_condition: agent-tdd-sdd complete && exist .git
+    block_rule: conflict pause
+    post_action: sdd_review_by_level
+  step_8:
+    dispatch_agent: agent-final-ops-sdd
+    pre_condition: agent-git-sdd finish or no git
+    block_rule: deploy fail pause
+    post_action: sdd_review_by_level
+  step_9:
+    dispatch_agent: agent-final-ops-sdd
+    pre_condition: deploy finish or skip
+    block_rule: no block
+    post_action: sdd_review_by_level
+  step_10:
+    dispatch_agent: agent-pipeline-controller-sdd
+    action: close_loop_check && sdd_final_review_if_full && clear_temp_cache
+
+global_dialog_spec:
+  audit_dialog_template:
+    title: 阶段产出审核确认
+    option_1: "{stage}通过，推进下一阶段（推荐）"
+    option_2: "{stage}存在问题，重新生成文档"
+  risky_operation_dialog:
+    rule: every risky action single independent dialog
+    production_deploy_double_confirm: true
+    file_delete_single_confirm: true
+  sdd_level_choose_dialog:
+    title: 选择SDD运行等级（自动判定可手动覆盖）
+    option_1: Auto自动匹配（推荐）
+    option_2: Full完整SDD（核心大需求）
+    option_3: Lite轻量SDD（小型迭代）
+    option_4: Off关闭SDD（Hotfix/文档修改）

@@ -1,0 +1,93 @@
+name: full-dev-pipeline-7agents
+display_name: 7Agent分文件标准化端到端研发流水线
+description: 1总控+6专项Agent独立目录拆分，全链路需求先行、TDD强制、高危弹窗确认，禁止跳过设计、禁止零测试交付
+priority: 100
+auto_bootstrap: true
+override_default_flow: true
+replace_skill: using-superpowers
+allow_external_skills: true
+external_skills:
+  - tiexin-doc
+run_mode: once
+permissions:
+  - file:read
+  - file:write
+  - file:delete
+  - shell:git
+  - shell:gh
+  - shell:npm
+  - deploy:execute
+  - context:global-rw
+  - user:dialog-all
+global_constraints:
+  disable_skylog: true
+  all_risky_ops_mandatory_confirm: true
+  forbid_skip_demand_design: true
+  forbid_zero_test_release: true
+  rollback_rule: single_reject_rollback_stage, double_reject_support_terminate
+
+agent_register_list:
+  - agent_ref: agent-pipeline-controller
+    agent_config: file://./agents/agent-pipeline-controller/config.yaml
+  - agent_ref: agent-demand
+    agent_config: file://./agents/agent-demand/config.yaml
+  - agent_ref: agent-plan
+    agent_config: file://./agents/agent-plan/config.yaml
+  - agent_ref: agent-matrix
+    agent_config: file://./agents/agent-matrix/config.yaml
+  - agent_ref: agent-git
+    agent_config: file://./agents/agent-git/config.yaml
+  - agent_ref: agent-tdd
+    agent_config: file://./agents/agent-tdd/config.yaml
+  - agent_ref: agent-final-ops
+    agent_config: file://./agents/agent-final-ops/config.yaml
+
+pipeline_flow_sequence:
+  step_1:
+    dispatch_agent: agent-pipeline-controller
+    action: init_global_context
+  step_2:
+    dispatch_agent: agent-demand
+    pre_condition: true
+    block_rule: output audit not pass -> re-run self; double reject -> terminate pipeline
+  step_3:
+    dispatch_agent: agent-plan
+    pre_condition: agent-demand audit pass
+    block_rule: output audit not pass -> re-run self; double reject -> terminate pipeline
+  step_4:
+    dispatch_agent: agent-matrix
+    pre_condition: agent-plan audit pass
+    block_rule: no block, user choose create/skip
+  step_5:
+    dispatch_agent: agent-git
+    pre_condition: agent-plan audit pass && workspace exist .git
+    block_rule: git init fail -> pause pipeline
+  step_6:
+    dispatch_agent: agent-tdd
+    pre_condition: agent-plan audit pass
+    block_rule: no test deliverable -> block whole pipeline
+  step_7:
+    dispatch_agent: agent-git
+    pre_condition: agent-tdd confirm complete && workspace exist .git
+    block_rule: git conflict -> pause pipeline wait manual fix
+  step_8:
+    dispatch_agent: agent-final-ops
+    pre_condition: agent-git finish or no git repo
+    block_rule: deploy fail -> pause pipeline
+  step_9:
+    dispatch_agent: agent-final-ops
+    pre_condition: deploy step finish or skip deploy
+    block_rule: no block, single file confirm by controller
+  step_10:
+    dispatch_agent: agent-pipeline-controller
+    action: close_loop_check && generate pipeline report
+
+global_dialog_spec:
+  audit_dialog_template:
+    title: 阶段产出审核确认
+    option_1: "{stage}通过，推进下一阶段（推荐）"
+    option_2: "{stage}存在问题，重新生成文档"
+  risky_operation_dialog:
+    rule: every risky action single independent dialog, no merge multiple decisions
+    production_deploy_double_confirm: true
+    file_delete_single_confirm: true

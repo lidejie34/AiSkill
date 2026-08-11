@@ -1,0 +1,28 @@
+name: agent-tdd
+display_name: TDD编码测试Agent
+type: agent-skill
+description: 编码、领域建模、单元测试专用，守住零测试交付底线
+priority: 70
+run_mode: temp
+bind_stage: test-driven-development
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - file:write
+  - shell:npm
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - tech_plan_doc
+  - dev_workspace_path
+output_deliverables:
+  - ddd_model_doc.md
+  - bdd_scenarios.md
+  - openapi.yaml
+  - unit_test_src
+  - compile_check_report

@@ -1,0 +1,27 @@
+name: agent-pipeline-controller
+display_name: Pipeline总控调度Agent
+type: agent-skill
+description: 流程中枢，统一调度、弹窗、全局校验、异常捕获、闭环校验，唯一拥有全局读写上下文权限
+priority: 100
+run_mode: persistent
+inherit_parent_global_constraints: true
+permissions:
+  - context:global-rw
+  - user:dialog-all
+  - file:read
+  - file:write
+deny_permissions: []
+exclusive_capabilities:
+  - flow_sequence_control
+  - all_user_dialog_manage
+  - global_rule_audit
+  - pipeline_exception_catch
+  - pipeline_close_loop_check
+downstream_agent_refs:
+  - agent-demand
+  - agent-plan
+  - agent-matrix
+  - agent-git
+  - agent-tdd
+  - agent-final-ops
+

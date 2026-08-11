@@ -1,0 +1,31 @@
+name: agent-demand
+display_name: 需求澄清Agent
+type: agent-skill
+description: 仅负责需求梳理与文档输出，无流程决策、无Git/部署权限
+priority: 80
+run_mode: temp
+bind_stage: grill-me
+inherit_parent_global_constraints: false
+dialog_owner: agent-pipeline-controller
+permissions:
+  - file:read
+  - file:write
+  - context:read-only
+deny_permissions:
+  - shell:git
+  - shell:npm
+  - deploy:execute
+  - file:delete
+  - user:dialog
+input_deps:
+  - global_business_input
+  - requirement_local_md
+  - requirement_wiki_url
+output_deliverables:
+  - demand_summary.md
+  - full_demand_doc.md
+external_skills:
+  - tiexin-doc
+notes: |
+  Wiki URL 优先由总控经 tiexin-doc 导出为 requirement_local_md；
+  demand 以本地 MD 为澄清源，默认禁止 wiki 写回。

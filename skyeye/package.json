@@ -1,0 +1,17 @@
+{
+  "name": "skyeye",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "查询 skyeye 天网日志。支持最近几分钟、指定时间范围、日志级别(DEBUG/INFO/WARN/ERROR/FATAL)、环境、模块、大类、小类、过滤1、过滤2、schema 等筛选。当用户需要查 skyeye 天网日志、按时间/级别/环境/模块等条件筛选时使用。",
+  "engines": { "node": ">=20" },
+  "bin": {
+    "skyeye": "./bin/skyeye"
+  },
+  "scripts": {
+    "preinstall": "node scripts/check-env.js",
+    "postinstall": "chmod +x bin/skyeye bin/skyeye.cjs && node scripts/postinstall.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.11"
+  }
+}
