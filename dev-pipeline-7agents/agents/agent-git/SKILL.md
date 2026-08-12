@@ -23,11 +23,11 @@ dialog_owner: agent-pipeline-controller
    - `git pull --ff-only origin <base_branch>`
    - `--ff-only` 失败（本地基线已分叉）→ 上报总控暂停，**禁止**自动 merge 或 rebase 掩盖分叉
    - 记录 `base_commit_sha`，作为后续冲突排查基准
-5. **生成开发分支名**：`feature/<slug>`，slug 直接复用 step_1 需求目录的 slug。上报总控弹窗确认或改名。
-6. **同名分支检查**：检查本地 `refs/heads/feature/<slug>` 与远端 `origin/feature/<slug>`。任一存在则上报总控弹窗——复用该分支（切过去并 pull）/ 换个名字 / 终止；**禁止**静默复用或强制覆盖。
+5. **生成开发分支名**：`feat/<slug>`，slug 直接复用 step_1 需求目录的 slug。上报总控弹窗确认或改名。
+6. **同名分支检查**：检查本地 `refs/heads/feat/<slug>` 与远端 `origin/feat/<slug>`。任一存在则上报总控弹窗——复用该分支（切过去并 pull）/ 换个名字 / 终止；**禁止**静默复用或强制覆盖。
 7. **创建 worktree 工作区**：
-   - `git worktree add <repo>/.worktrees/<slug> -b feature/<slug> <base_branch>`
-   - 复用已有分支时去掉 `-b`，直接 `git worktree add <repo>/.worktrees/<slug> feature/<slug>`
+   - `git worktree add <repo>/.worktrees/<slug> -b feat/<slug> <base_branch>`
+   - 复用已有分支时去掉 `-b`，直接 `git worktree add <repo>/.worktrees/<slug> feat/<slug>`
    - **建后立即**确保 `.worktrees/` 被忽略：写入 `<repo>/.git/info/exclude`（而非修改受版本控制的 `.gitignore`，避免污染用户仓库与提交）
    - worktree 创建失败（路径被占用、分支被其他 worktree 占用）→ 上报总控暂停，不做强制清理
 8. **回写上下文**（消除落位歧义，agent-tdd 依赖此值）：
@@ -41,7 +41,7 @@ dialog_owner: agent-pipeline-controller
 1. **提交范围校验**：只提交 worktree 内变更；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件；校验暂存区无 aiSpecs 路径后再提交。
 2. `git commit`（提交信息含 slug 与需求摘要要点）。
 3. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
-4. **推送开发分支**：`git push -u origin feature/<slug>`，到此结束。
+4. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。
 5. **基线状态仅作提示**：比对 `base_commit_sha` 与当前 `origin/<base_branch>`，落后时在 `git_op_log.json` 与终端输出提示信息，**不阻断、不自动合并**。
 6. **禁止合并基线**：不执行 `merge` 到基线、不推送基线。后续入基线由用户在流水线之外自行处理。
 7. **冲突处理**：自动检测冲突，标记 `conflict_flag` 上报总控，流水线暂停等待人工修复；**禁止**自动 `--force`、`--theirs/--ours` 等单边取舍。

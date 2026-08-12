@@ -25,7 +25,7 @@ git_strategy:
   workspace_mode: worktree                     # 统一 worktree 隔离
   worktree_path_pattern: "{repo_root}/.worktrees/{slug}"
   ignore_worktree_via: .git/info/exclude       # 不改动受版本控制的 .gitignore
-  branch_pattern: "feature/{slug}"
+  branch_pattern: "feat/{slug}"
   base_branch_preferred: release               # 常用基线，远端存在时作为弹窗默认选中项
   base_branch_detect: [release, origin/HEAD, main, master, develop]
   base_branch_confirm: true                    # 每次拉取新分支确认，不缓存

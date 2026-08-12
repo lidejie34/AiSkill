@@ -123,7 +123,7 @@ global_dialog_spec:
     - target_repo_select          # step_5 多仓库选择
     - dirty_worktree_policy       # stash / 手动提交 / 终止
     - base_branch_confirm         # 默认选中 origin/release，每次新建分支都问，不缓存
-    - dev_branch_name_confirm     # 默认 feature/<slug>，可改名
+    - dev_branch_name_confirm     # 默认 feat/<slug>，可改名
     - existing_branch_policy      # 复用 / 换名 / 终止
     - worktree_remove_confirm     # 默认保留
   git_stage_no_dialog:

@@ -71,12 +71,12 @@ global_constraints:
 ```
 step_5  定位仓库 → 脏工作区检查 → 确认基线分支（默认 release，每次都问不缓存）
         → fetch + pull --ff-only
-        → 分支名 feature/<slug> → 同名分支检查
-        → git worktree add {repo_root}/.worktrees/<slug> -b feature/<slug>
+        → 分支名 feat/<slug> → 同名分支检查
+        → git worktree add {repo_root}/.worktrees/<slug> -b feat/<slug>
         → 回写 dev_workspace_path（= worktree 路径）
 
 step_7  校验暂存区不含 aiSpecs → commit → fetch --prune
-        → git push -u origin feature/<slug>   仅推开发分支，到此结束
+        → git push -u origin feat/<slug>   仅推开发分支，到此结束
         → worktree 默认保留
 ```
 
