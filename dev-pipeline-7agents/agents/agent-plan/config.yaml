@@ -19,6 +19,11 @@ deny_permissions:
   - user:dialog
 input_deps:
   - demand_doc
+  - spec_dir
+  - design_dir
+output_base_dir: design_dir
 output_deliverables:
-  - plan_summary.md
-  - full_tech_plan.md
+  - design/plan_summary.md
+  - design/full_tech_plan.md
+notes: |
+  所有产出只写入总控下发的 design_dir 绝对路径，禁止写入代码仓库或自行拼接路径。

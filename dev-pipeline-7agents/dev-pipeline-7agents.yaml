@@ -25,6 +25,23 @@ global_constraints:
   forbid_skip_demand_design: true
   forbid_zero_test_release: true
   rollback_rule: single_reject_rollback_stage, double_reject_support_terminate
+  forbid_write_doc_outside_spec_dir: true
+  forbid_delete_outside_spec_root: true
+
+# 需求文档工作区：所有项目共用一个根目录，每个需求独占一个子目录
+spec_workspace:
+  root: /Users/lidejie/aiSpecs
+  layout: flat                      # 单层平铺，不按项目再分层
+  dir_pattern: "{date}-{project}-{slug}"   # date=YYYYMMDD, project=代码仓库目录名, slug=需求短名
+  subdirs:
+    requirements_dir: requirements  # 需求源文档 + 需求澄清产出
+    design_dir: design              # 技术方案 + DDD/BDD/OpenAPI
+    reports_dir: reports            # 各阶段机器可读日志与流水线报告
+    history_dir: .history           # 驳回重跑时的旧版本归档
+  rerun_policy: archive_to_history  # 同名目录已存在：旧文件归档为 <basename>.v<N>.<ext>，不新建目录
+  meta_file: pipeline_meta.json     # run 元信息（slug/项目/仓库路径/源URL/fid/创建时间）
+  git_tracked: false                # 位于代码仓库之外，任何阶段都不纳入 git 提交
+  resolved_by: agent-pipeline-controller  # 仅总控在 step_1 解析并落盘绝对路径
 
 agent_register_list:
   - agent_ref: agent-pipeline-controller
@@ -45,7 +62,8 @@ agent_register_list:
 pipeline_flow_sequence:
   step_1:
     dispatch_agent: agent-pipeline-controller
-    action: init_global_context
+    action: init_global_context && resolve_spec_dir
+    note: 必须在任何子Agent调度与Wiki导出之前，解析并创建需求目录，将绝对路径写入全局上下文
   step_2:
     dispatch_agent: agent-demand
     pre_condition: true
@@ -61,15 +79,21 @@ pipeline_flow_sequence:
   step_5:
     dispatch_agent: agent-git
     pre_condition: agent-plan audit pass && workspace exist .git
-    block_rule: git init fail -> pause pipeline
+    action: locate_repo && check_dirty && confirm_base_branch && fetch_pull_base && create_worktree
+    block_rule: |
+      dirty worktree / ff-only pull fail / worktree create fail -> pause pipeline;
+      must writeback dev_workspace_path(worktree path) before step_6
   step_6:
     dispatch_agent: agent-tdd
-    pre_condition: agent-plan audit pass
+    pre_condition: agent-plan audit pass && dev_workspace_path resolved
     block_rule: no test deliverable -> block whole pipeline
   step_7:
     dispatch_agent: agent-git
     pre_condition: agent-tdd confirm complete && workspace exist .git
-    block_rule: git conflict -> pause pipeline wait manual fix
+    action: verify_staged_no_spec_dir && commit && fetch_prune && push_dev_branch
+    block_rule: |
+      remote dev branch diverged / conflict -> pause pipeline wait manual fix;
+      push_only mode: forbid merge to base, forbid push --force
   step_8:
     dispatch_agent: agent-final-ops
     pre_condition: agent-git finish or no git repo
@@ -91,3 +115,16 @@ global_dialog_spec:
     rule: every risky action single independent dialog, no merge multiple decisions
     production_deploy_double_confirm: true
     file_delete_single_confirm: true
+  dialog_cache_rule:
+    default: cache_confirmed_choice
+    never_cache:
+      - base_branch_confirm       # 每次拉取新分支都必须重新确认
+  git_stage_dialogs:
+    - target_repo_select          # step_5 多仓库选择
+    - dirty_worktree_policy       # stash / 手动提交 / 终止
+    - base_branch_confirm         # 默认选中 origin/release，每次新建分支都问，不缓存
+    - dev_branch_name_confirm     # 默认 feature/<slug>，可改名
+    - existing_branch_policy      # 复用 / 换名 / 终止
+    - worktree_remove_confirm     # 默认保留
+  git_stage_no_dialog:
+    - merge_mode_select           # step_7 固定 push_only，无需询问

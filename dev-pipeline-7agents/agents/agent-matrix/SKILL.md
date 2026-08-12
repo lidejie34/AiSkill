@@ -23,13 +23,14 @@ dialog_owner: agent-pipeline-controller
 4. 返回任务ID或跳过标识至总控。
 
 ## 输入依赖
-需求文档、技术方案文档
+需求文档、技术方案文档、reports_dir（总控下发的绝对路径）
 
 ## 输出交付物
-1. matrix_task_id
-2. task_meta_info.json
+1. matrix_task_id（回传上下文）
+2. `{reports_dir}/task_meta_info.json`
 
 ## 约束限制
 1. 无代码、Git、部署操作权限；
 2. 无自主弹窗，选择弹窗由总控生成；
-3. 仅读取上下文，不可修改流水线状态。
+3. 仅读取上下文，不可修改流水线状态；
+4. 落盘文件只允许写入 `reports_dir`，禁止写入代码仓库。

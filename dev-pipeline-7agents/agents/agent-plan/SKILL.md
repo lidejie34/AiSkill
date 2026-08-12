@@ -19,13 +19,15 @@ dialog_owner: agent-pipeline-controller
 5. 驳回后迭代更新设计内容，不生成可运行代码。
 
 ## 输入依赖
-完整需求文档
+完整需求文档、design_dir（总控下发的绝对路径，必填）
 
 ## 输出交付物
-1. plan_summary.md
-2. full_tech_plan.md
+统一写入总控下发的 `design_dir`，禁止自行决定落位：
+1. `{design_dir}/plan_summary.md`
+2. `{design_dir}/full_tech_plan.md`
 
 ## 约束限制
 1. 禁止编写业务实现代码、单元测试；
 2. 无弹窗权限，所有确认由总控统一处理；
-3. 仅只读全局上下文，无法修改流程状态。
+3. 仅只读全局上下文，无法修改流程状态；
+4. 禁止在 `design_dir` 之外写文件；未拿到该路径则上报总控，不得自行创建目录。

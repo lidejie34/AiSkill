@@ -32,13 +32,17 @@ dialog_owner: agent-pipeline-controller
 - requirement_local_md（可选）
 - requirement_wiki_url（可选）
 - global_business_input
+- requirements_dir（总控下发的绝对路径，必填）
 
 ## 输出交付物
-1. demand_summary.md（所有需求必出）
-2. full_demand_doc.md（中大型需求）
+统一写入总控下发的 `requirements_dir`，禁止自行决定落位：
+1. `{requirements_dir}/demand_summary.md`（所有需求必出）
+2. `{requirements_dir}/full_demand_doc.md`（中大型需求）
 
 ## 约束限制
 1. 禁止生成任何代码、接口、数据库方案；
 2. 无自主弹窗能力，所有确认交由总控；
 3. 仅可读全局上下文，不可修改流程状态；
-4. 禁止擅自写回或删除 Wiki/云文档。
+4. 禁止擅自写回或删除 Wiki/云文档；
+5. 禁止在 `requirements_dir` 之外写文件（含代码仓库、当前工作目录）；未拿到该路径则直接上报总控，不得自行创建目录；
+6. 驳回重跑时直接覆盖同名文件，旧版本归档由总控负责，本Agent不操作 `.history/`。

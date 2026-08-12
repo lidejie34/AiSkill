@@ -26,16 +26,24 @@ dialog_owner: agent-pipeline-controller
 3. 编码完成状态回传总控等待用户确认。
 
 ## 输入依赖
-技术方案文档、代码工作目录路径
+技术方案文档、代码工作目录路径 `dev_workspace_path`、文档目录 `design_dir` / `reports_dir`（总控下发的绝对路径）
 
 ## 输出交付物
-1. ddd_model_doc.md（核心业务）
-2. bdd_scenarios.md（核心业务）
-3. openapi.yaml（轻量接口）
-4. unit_test_src
-5. compile_check_report
+文档与代码分两处落位，**不得互串**：
+### 文档类 → 写入 aiSpecs 需求目录
+1. `{design_dir}/ddd_model_doc.md`（核心业务）
+2. `{design_dir}/bdd_scenarios.md`（核心业务）
+3. `{design_dir}/openapi.yaml`（轻量接口）
+4. `{reports_dir}/compile_check_report.json`
+### 代码类 → 写入代码仓库
+5. `unit_test_src`（单元测试，落在 `dev_workspace_path` 内项目约定的测试目录）
+6. `impl_src`（业务实现代码，落在 `dev_workspace_path`）
+
+> `dev_workspace_path` 是 agent-git 在 step_5 创建的 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），不是主仓库根目录。写进主仓库会导致 step_7 提交时抓不到任何改动。依赖安装（npm install / mvn）也须在该目录执行。
 
 ## 约束限制
 1. 无Git推送、部署、删除文件权限；
 2. 范式选择弹窗、编码完成确认弹窗由总控提供；
-3. 仅可读上下文，无法跳过测试流程。
+3. 仅可读上下文，无法跳过测试流程；
+4. 禁止把测试/实现代码写进 aiSpecs 需求目录，禁止把设计文档写进代码仓库；
+5. 未同时拿到 `dev_workspace_path` 与 `design_dir` 时上报总控，不得自行推断落位。

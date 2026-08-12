@@ -9,6 +9,7 @@ inherit_parent_global_constraints: false
 dialog_owner: agent-pipeline-controller
 permissions:
   - file:read
+  - file:write
   - context:read-only
 deny_permissions:
   - shell:git
@@ -19,6 +20,8 @@ deny_permissions:
 input_deps:
   - demand_doc
   - tech_plan_doc
+  - reports_dir
+output_base_dir: reports_dir
 output_deliverables:
   - matrix_task_id
-  - task_meta_info.json
+  - reports/task_meta_info.json

@@ -20,9 +20,18 @@ deny_permissions:
 input_deps:
   - tech_plan_doc
   - dev_workspace_path
+  - spec_dir
+  - design_dir
+output_base_dir: design_dir          # 仅文档类产出；代码与测试留在 dev_workspace_path
 output_deliverables:
-  - ddd_model_doc.md
-  - bdd_scenarios.md
-  - openapi.yaml
+  - design/ddd_model_doc.md
+  - design/bdd_scenarios.md
+  - design/openapi.yaml
+  - reports/compile_check_report.json
+code_deliverables_base_dir: dev_workspace_path
+code_deliverables:
   - unit_test_src
-  - compile_check_report
+  - impl_src
+notes: |
+  文档类产出写 design_dir / reports_dir；源码与单元测试必须写在代码仓库 dev_workspace_path 内。
+  两者不得互串：禁止把测试代码写进 aiSpecs，禁止把设计文档写进代码仓库。

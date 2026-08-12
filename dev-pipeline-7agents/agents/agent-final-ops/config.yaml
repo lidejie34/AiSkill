@@ -20,6 +20,15 @@ deny_permissions:
 input_deps:
   - dev_branch
   - all_doc_list
+  - spec_dir
+  - reports_dir
+output_base_dir: reports_dir
 output_deliverables:
-  - deploy_result.json
-  - doc_clean_log.json
+  - reports/deploy_result.json
+  - reports/doc_clean_log.json
+delete_scope:
+  allow_prefix: spec_dir            # 仅本次需求目录内可删
+  forbid_outside_prefix: true       # 越界直接拒绝并上报总控
+  forbid_spec_root_itself: true     # 禁止删除 /Users/lidejie/aiSpecs 自身
+  forbid_code_repo: true            # 代码仓库内文件永不清理
+  keep_history_dir_by_default: true # .history 需用户单独确认才删

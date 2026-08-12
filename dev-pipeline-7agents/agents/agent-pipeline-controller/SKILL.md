@@ -12,24 +12,64 @@ dialog_owner: self
 
 ## 强制执行规则
 1. 严格按照主文件 pipeline_flow_sequence 固定顺序执行，禁止跳步、调换阶段；
-2. 统一生成全部审核弹窗、高危操作弹窗，缓存用户选择，已确认步骤不再重复询问；
+2. 统一生成全部审核弹窗、高危操作弹窗，缓存用户选择，已确认步骤不再重复询问；**例外：基线分支确认不缓存，每次拉取新分支都必须重新询问**；
 3. 实时校验全局红线：禁止跳过需求设计、禁止零测试交付；
 4. 阶段驳回逻辑：单次驳回重跑当前Agent；连续两次驳回提供流水线终止选项；
 5. 捕获Git冲突、部署失败、文件读写异常，暂停流水线并弹窗引导人工修复；
-6. 流水线结束执行完整闭环校验，核对所有交付物齐全、无遗留异常后输出执行报告。
+6. 流水线结束执行完整闭环校验，核对所有交付物齐全、无遗留异常后输出执行报告；
+7. step_1 未成功解析并创建需求目录前，禁止调度任何子Agent；校验各阶段产出确实落在 `spec_dir` 内，越界即暂停流水线。
+
+## 需求文档工作区解析（step_1，先于一切子Agent与Wiki导出）
+所有项目共用根目录 `/Users/lidejie/aiSpecs`，每个需求独占一个子目录。总控是**唯一**有权解析该路径的角色。
+
+1. 确定 `project`：取流水线启动时所在项目目录的 basename。若 step_5 用户选择的 Git 仓库与之不同，**不重命名已建目录**（避免路径漂移），仅在 `pipeline_meta.json` 与最终报告中记录实际仓库路径。
+2. 确定 `slug`：Wiki/云文档输入时由文档标题转短横线小写短名；无文档时由业务背景生成候选，**弹窗让用户确认或改名**后使用。
+3. 拼接目录 `{root}/{YYYYMMDD}-{project}-{slug}`，创建三个子目录 `requirements/`、`design/`、`reports/`。
+4. 目录已存在（同日同需求重跑）：按 `rerun_policy: archive_to_history` 处理——把将被覆盖的旧文件移动到 `.history/<basename>.v<N>.<ext>`（N 为现有最大版本+1），**禁止**新建 `-run2` 类并行目录。
+5. 阶段驳回重跑同样走第 4 条归档逻辑，保证被驳回的那一版可回溯。
+6. 写入全局上下文的必须是**绝对路径**字段，供各子Agent直接使用，子Agent不得自行拼接或改写：
+   - `spec_dir`、`requirements_dir`、`design_dir`、`reports_dir`、`history_dir`
+7. 落盘 `pipeline_meta.json`：slug、project、实际仓库路径、源 URL / fid、创建时间、当前版本号。
+8. 硬约束：文档类产出只能落在 `spec_dir` 内；`spec_root` 之外一律禁止写入与删除；该目录在代码仓库之外，任何阶段都不纳入 git 提交。
 
 ## Wiki / 云文档输入（tiexin-doc）
 在调度 `agent-demand` 之前，总控检查用户输入：
 
 1. 若含 `https://wiki.17u.cn/wiki?fid=` 或 `https://toca.17u.cn/cloud?fid=`（或等价 host）：
    - **先 Read 并遵循** `tiexin-doc` skill（doctor --check-auth → 不足则 install / config init）
-   - 使用 `wiki_md_sync.py export --url "<url>" --local "./requirements/<slug>.md" --overwrite` 导出到工作区
-   - 将「本地 Markdown 路径 + 源 URL + fid」写入全局上下文，再调度 demand
-   - 有附图且影响需求理解时，可按 tiexin-doc「Standard Markdown With Parsed Images」生成分析用 standard.md；**澄清仍以 sync 用本地 MD 为准**，禁止把 standard.md 回写 Wiki
-2. 若无 URL 但有本地 `.md` 路径：直接把路径写入上下文给 demand
+   - 使用 `wiki_md_sync.py export --url "<url>" --local "{requirements_dir}/<slug>.wiki.md" --overwrite` 导出（`requirements_dir` 取自上下文绝对路径）
+   - 将「本地 Markdown 路径 + 源 URL + fid」写入全局上下文与 `pipeline_meta.json`，再调度 demand
+   - 有附图且影响需求理解时，可按 tiexin-doc「Standard Markdown With Parsed Images」生成分析用 standard.md（同样落在 `requirements_dir`）；**澄清仍以 sync 用本地 MD 为准**，禁止把 standard.md 回写 Wiki
+2. 若无 URL 但有本地 `.md` 路径：把该路径**复制**进 `requirements_dir` 后再把副本路径写入上下文，避免 demand 直接改动用户原文件
 3. 若仅有口头/粘贴背景：原样下发 demand
 4. tiexin 预检失败：弹窗三选一——重试登录 / 粘贴全文 / 终止流水线；禁止跳过文档直接编码
 5. 本流水线默认**不写回** Wiki；若用户明确要求同步，须独立弹窗确认后再走 tiexin push（不得交给 final-ops 静默执行）
+
+## Git 阶段弹窗清单（子Agent无弹窗权，全部由总控弹出）
+`agent-git` 每次「上报总控」都对应下列一个弹窗；总控未回传选择前，git 阶段必须停住。
+
+### step_5 初始化
+1. **目标仓库选择**——检索到多个 `.git` 时列出仓库路径供选择；零仓库时询问是否跳过 git 阶段。
+2. **脏工作区处理**——`git status --porcelain` 非空时三选一：`git stash` 暂存 / 用户手动提交后重试 / 终止流水线。
+3. **基线分支确认**——默认选中远端 `origin/release`（常用基线），不存在时回退 `origin/HEAD` → main/master/develop，允许改选。**此弹窗是「已确认不再询问」规则的明确例外：每次拉取新分支都必须重新确认，禁止缓存复用**（同一流水线内多次建分支、驳回重跑后再建分支，都要重新问）。
+4. **开发分支命名确认**——默认 `feature/<slug>`（复用 step_1 的 slug），允许改名。
+5. **同名分支冲突**——本地或远端已存在时三选一：复用该分支 / 换个名字 / 终止；禁止静默复用。
+
+### step_7 收尾
+6. **worktree 是否移除**——默认保留；仅在用户明确确认后指示 agent-git 执行 `git worktree remove`。
+
+> step_7 固定为「commit + push 开发分支」，**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
+
+### 暂停类上报（非选择弹窗，直接暂停并引导人工修复）
+- `git pull --ff-only` 失败（本地基线已分叉）
+- worktree 创建失败（路径被占用 / 分支被其他 worktree 占用）
+- 远端同名开发分支已被他人推进导致本地落后（禁止 force 覆盖）
+- 提交/推送过程冲突 `conflict_flag`
+
+## Git 与需求目录的边界校验
+1. `dev_workspace_path` 由 agent-git 回写为 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），总控须校验该值非空后才可调度 agent-tdd —— 否则代码会被写进主仓库而分支在 worktree 里，提交时抓不到改动；
+2. 校验 agent-tdd 的代码产出确实落在 `dev_workspace_path` 内、文档产出落在 `spec_dir` 内，越界即暂停；
+3. step_7 提交前校验暂存区不含 `/Users/lidejie/aiSpecs` 任何路径。
 
 ## 下游关联Agent
 agent-demand、agent-plan、agent-matrix、agent-git、agent-tdd、agent-final-ops
@@ -41,4 +81,5 @@ agent-demand、agent-plan、agent-matrix、agent-git、agent-tdd、agent-final-o
 - 统一异常捕获与暂停逻辑
 - 流水线闭环完成判定
 - 全局上下文读写权限
+- **需求文档工作区解析、创建与历史版本归档（子Agent只消费绝对路径）**
 - Wiki URL 预检与 tiexin-doc 导出调度（demand 只消费本地产物）

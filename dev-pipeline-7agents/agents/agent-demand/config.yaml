@@ -21,11 +21,15 @@ input_deps:
   - global_business_input
   - requirement_local_md
   - requirement_wiki_url
+  - spec_dir
+  - requirements_dir
+output_base_dir: requirements_dir
 output_deliverables:
-  - demand_summary.md
-  - full_demand_doc.md
+  - requirements/demand_summary.md
+  - requirements/full_demand_doc.md
 external_skills:
   - tiexin-doc
 notes: |
   Wiki URL 优先由总控经 tiexin-doc 导出为 requirement_local_md；
   demand 以本地 MD 为澄清源，默认禁止 wiki 写回。
+  所有产出只写入总控下发的 requirements_dir 绝对路径，禁止自行拼接路径或写入代码仓库。
