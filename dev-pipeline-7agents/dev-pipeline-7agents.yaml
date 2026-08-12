@@ -1,4 +1,4 @@
-name: full-dev-pipeline-7agents
+name: dev-pipeline-7agents
 display_name: 7Agent分文件标准化端到端研发流水线
 description: 1总控+6专项Agent独立目录拆分，全链路需求先行、TDD强制、高危弹窗确认，禁止跳过设计、禁止零测试交付
 priority: 100

@@ -1,5 +1,6 @@
 ---
-name: full-dev-pipeline-7agents
+name: dev-pipeline-7agents
+description: 7Agent拆分的端到端研发流水线：需求澄清→方案设计→任务拆解→Git工作区初始化→TDD编码→提交合并→部署与文档归档。当需要走需求先行、强制TDD、高危操作独立弹窗确认的完整研发流程时使用。
 display_name: 7Agent拆分标准化端到端研发流水线
 priority: 100
 auto_bootstrap: true
@@ -42,7 +43,7 @@ global_constraints:
 5. 遵循Skill标准规范，每个Agent可独立调试、单独加载测试。
 
 ## 五、启动加载方式
-程序入口加载 `full-dev-pipeline-main.yaml`，自动递归读取agents目录下所有Agent配置与SKILL.md执行规则。
+程序入口加载 `dev-pipeline-7agents.yaml`，自动递归读取agents目录下所有Agent配置与SKILL.md执行规则。
 
 ## 六、外部 Skill 依赖（文档读取）
 当用户输入含 Wiki/云文档 URL（`wiki.17u.cn` / `toca.17u.cn`）时，**必须**按 `tiexin-doc` skill 读取，禁止臆造文档内容。
