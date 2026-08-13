@@ -8,6 +8,7 @@ replace_skill: using-superpowers
 allow_external_skills: true
 external_skills:
   - tiexin-doc
+  - matrix
 run_mode: once
 permissions:
   - file:read
@@ -16,6 +17,7 @@ permissions:
   - shell:git
   - shell:gh
   - shell:npm
+  - shell:matrix
   - deploy:execute
   - context:global-rw
   - user:dialog-all
@@ -75,7 +77,13 @@ pipeline_flow_sequence:
   step_4:
     dispatch_agent: agent-matrix
     pre_condition: agent-plan audit pass
-    block_rule: no block, user choose create/skip
+    block_rule: |
+      must pop create/skip dialog (independent, default create, not cached);
+      create -> matrix auth login check -> matrix -- createMatrixTask --title --description
+            -> writeback matrix_task_id to global context + task_meta_info.json;
+      skip -> user explicit choice -> writeback matrix_skipped: true;
+      forbid substitute TaskCreate/session todo for Matrix creation;
+      matrix CLI fail / auth fail -> pause pipeline wait manual fix
   step_5:
     dispatch_agent: agent-git
     pre_condition: agent-plan audit pass && workspace exist .git
@@ -86,11 +94,15 @@ pipeline_flow_sequence:
   step_6:
     dispatch_agent: agent-tdd
     pre_condition: agent-plan audit pass && dev_workspace_path resolved
-    block_rule: no test deliverable -> block whole pipeline
+    block_rule: |
+      no test deliverable -> block whole pipeline;
+      each implementation task pass -> local git add + git commit (incremental, forbid push/merge/rebase/force);
+      local commit fail / conflict -> pause pipeline wait manual fix;
+      task-level commits complete -> handoff to step_7 for verify + push only
   step_7:
     dispatch_agent: agent-git
     pre_condition: agent-tdd confirm complete && workspace exist .git
-    action: verify_staged_no_spec_dir && commit && fetch_prune && push_dev_branch
+    action: verify_incremental_commits_exist && verify_staged_no_spec_dir && fetch_prune && push_dev_branch
     block_rule: |
       remote dev branch diverged / conflict -> pause pipeline wait manual fix;
       push_only mode: forbid merge to base, forbid push --force

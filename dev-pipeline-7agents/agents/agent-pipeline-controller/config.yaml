@@ -10,6 +10,7 @@ permissions:
   - user:dialog-all
   - file:read
   - file:write
+  - shell:matrix
 deny_permissions: []
 exclusive_capabilities:
   - flow_sequence_control

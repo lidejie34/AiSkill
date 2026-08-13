@@ -10,6 +10,7 @@ dialog_owner: agent-pipeline-controller
 permissions:
   - file:read
   - file:write
+  - shell:matrix
   - context:read-only
 deny_permissions:
   - shell:git

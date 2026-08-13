@@ -11,9 +11,10 @@ permissions:
   - file:read
   - file:write
   - shell:npm
+  - shell:git-commit          # 仅本地 git add/commit（任务级增量提交）
   - context:read-only
 deny_permissions:
-  - shell:git
+  - shell:git-remote-mutate   # push / merge / rebase / force / branch -D / worktree remove
   - deploy:execute
   - file:delete
   - user:dialog
@@ -35,3 +36,4 @@ code_deliverables:
 notes: |
   文档类产出写 design_dir / reports_dir；源码与单元测试必须写在代码仓库 dev_workspace_path 内。
   两者不得互串：禁止把测试代码写进 aiSpecs，禁止把设计文档写进代码仓库。
+  本地增量提交仅允许 git add/commit；push/merge/rebase/force 等远程与危险操作由 step_7 agent-git 执行。

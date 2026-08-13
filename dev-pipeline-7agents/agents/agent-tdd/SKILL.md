@@ -22,6 +22,12 @@ dialog_owner: agent-pipeline-controller
 1. 先定义OpenAPI接口契约；
 2. 开发收尾强制编写主流程单元测试；
 3. 执行mvn/npm编译校验。
+### 任务级增量提交（每个实施任务完成后立即执行）
+在 `dev_workspace_path` 内执行本地 `git add` + `git commit`，不攒到最后一次性提交：
+- **时机**：每个实施任务「测试通过 + 编译通过」后立即提交一次；
+- **提交信息**：`feat(<slug>): <任务简述>`，可带 `Co-Authored-By: Claude <noreply@anthropic.com>`；
+- **仅限本地**：`git add` / `git commit` / `git status` / `git diff`；**禁止** `git push`、`git merge`、`git rebase`、`--force`、`branch -D`、`worktree remove`（这些属于 step_7 / agent-git）；
+- 提交失败或出现冲突：暂停流水线，上报总控引导人工修复，禁止用 `--amend`/`reset` 掩盖。
 2. 无测试产物则标记阻断交付，上报总控触发全局拦截规则；
 3. 编码完成状态回传总控等待用户确认。
 
@@ -42,7 +48,7 @@ dialog_owner: agent-pipeline-controller
 > `dev_workspace_path` 是 agent-git 在 step_5 创建的 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），不是主仓库根目录。写进主仓库会导致 step_7 提交时抓不到任何改动。依赖安装（npm install / mvn）也须在该目录执行。
 
 ## 约束限制
-1. 无Git推送、部署、删除文件权限；
+1. 无Git推送/合并/强推/分支删除权限；仅允许在 `dev_workspace_path` 内本地 `git add`/`git commit`（任务级增量提交）；
 2. 范式选择弹窗、编码完成确认弹窗由总控提供；
 3. 仅可读上下文，无法跳过测试流程；
 4. 禁止把测试/实现代码写进 aiSpecs 需求目录，禁止把设计文档写进代码仓库；

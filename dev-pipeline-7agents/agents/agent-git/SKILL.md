@@ -36,10 +36,10 @@ dialog_owner: agent-pipeline-controller
 9. **提示用户**：worktree 目录为新建，`node_modules` / `target` 等依赖需在该目录重新安装；IDE 需打开该路径。
 
 ### 2. 编码后提交合并阶段（step_7）
-本阶段**只提交并推送开发分支**，不合并基线。
+本阶段**只校验任务级增量提交并推送开发分支**，不合并基线；本地提交已在 step_6 由 agent-tdd 按任务完成。
 
-1. **提交范围校验**：只提交 worktree 内变更；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件；校验暂存区无 aiSpecs 路径后再提交。
-2. `git commit`（提交信息含 slug 与需求摘要要点）。
+1. **增量提交校验**：确认 worktree 内已有 ≥1 个任务级本地提交（`git log --oneline feat/<slug> --not origin/<base_branch>`）。为零则上报总控暂停，禁止擅自补一个大 commit。
+2. **改动校验**：`git status --short` 仍有未提交改动时上报总控三选一——由 agent-tdd 补提交 / 用户手动处理 / 终止；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件。
 3. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
 4. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。
 5. **基线状态仅作提示**：比对 `base_commit_sha` 与当前 `origin/<base_branch>`，落后时在 `git_op_log.json` 与终端输出提示信息，**不阻断、不自动合并**。

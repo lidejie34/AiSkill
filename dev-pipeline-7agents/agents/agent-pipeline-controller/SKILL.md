@@ -45,6 +45,23 @@ dialog_owner: self
 4. tiexin 预检失败：弹窗三选一——重试登录 / 粘贴全文 / 终止流水线；禁止跳过文档直接编码
 5. 本流水线默认**不写回** Wiki；若用户明确要求同步，须独立弹窗确认后再走 tiexin push（不得交给 final-ops 静默执行）
 
+## step_4 Matrix 任务创建（agent-matrix）
+`step_4` 是可选交互阶段——「可选」仅指允许用户明确选择跳过，**禁止控制器静默跳过、禁止用会话内 TaskCreate/todo 顶替**。
+
+1. 前置：agent-plan 审核通过后进入；读取需求+设计完整上下文。
+2. **必须独立弹出创建/跳过选择框**（`AskUserQuestion`，不缓存，默认「创建任务」；不得与方案审批、基线确认等弹窗合并）：
+   - 创建任务：进入第 3 步；
+   - 直接跳过：将 `matrix_skipped: true` 写入 `task_meta_info.json`，再进入 step_5。
+3. 创建任务流程（**唯一入口是 `matrix` CLI，禁止用 `TaskCreate` 顶替**）：
+   - 先读取并遵循 `matrix` skill；执行 `matrix auth login` 校验登录，未登录则暂停并弹窗引导登录；
+   - `matrix -- queryMatrixProjects` 选定项目空间 → `queryMatrixProjectSprints` 选定迭代 → 指定任务类型/优先级；
+   - 自动回填需求+设计摘要作为任务描述（description）；
+   - **预览任务信息（含完整 description）并经用户确认后再创建**；
+   - 调用 `matrix -- createMatrixTask --title=<...> --description=<...>` 创建（勿绕过 description）；
+   - 将 `matrix_task_id` 写入全局上下文。
+4. 输出交付物：`matrix_task_id`（创建）或 `matrix_skipped: true`（跳过）；两者必须落盘 `{reports_dir}/task_meta_info.json` 的 step_4 记录。
+5. matrix CLI 调用失败（登录失效/接口异常/参数错误）：暂停流水线并弹窗引导人工修复，禁止吞掉错误继续 step_5。
+
 ## Git 阶段弹窗清单（子Agent无弹窗权，全部由总控弹出）
 `agent-git` 每次「上报总控」都对应下列一个弹窗；总控未回传选择前，git 阶段必须停住。
 
@@ -58,7 +75,7 @@ dialog_owner: self
 ### step_7 收尾
 6. **worktree 是否移除**——默认保留；仅在用户明确确认后指示 agent-git 执行 `git worktree remove`。
 
-> step_7 固定为「commit + push 开发分支」，**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
+> step_7 固定为「校验任务级增量提交 + push 开发分支」——本地提交在 step_6 由 agent-tdd 按任务完成，step_7 不再整体 commit。**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
 
 ### 暂停类上报（非选择弹窗，直接暂停并引导人工修复）
 - `git pull --ff-only` 失败（本地基线已分叉）
@@ -69,7 +86,7 @@ dialog_owner: self
 ## Git 与需求目录的边界校验
 1. `dev_workspace_path` 由 agent-git 回写为 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），总控须校验该值非空后才可调度 agent-tdd —— 否则代码会被写进主仓库而分支在 worktree 里，提交时抓不到改动；
 2. 校验 agent-tdd 的代码产出确实落在 `dev_workspace_path` 内、文档产出落在 `spec_dir` 内，越界即暂停；
-3. step_7 提交前校验暂存区不含 `/Users/lidejie/aiSpecs` 任何路径。
+3. step_7 推送前校验：worktree 内已有 ≥1 个任务级增量提交（agent-tdd 在 step_6 完成）；暂存区不含 `/Users/lidejie/aiSpecs` 任何路径；仍有未提交改动须先补齐再推。
 
 ## 下游关联Agent
 agent-demand、agent-plan、agent-matrix、agent-git、agent-tdd、agent-final-ops

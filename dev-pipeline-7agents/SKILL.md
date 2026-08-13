@@ -25,7 +25,8 @@ global_constraints:
 4. 核心业务强制DDD+BDD+完整TDD循环；轻量接口必须主流程单元测试；
 5. Git冲突、部署失败、文件异常直接暂停流水线，等待人工修复；
 6. 全局关闭skylog持久日志，仅终端临时输出执行信息；
-7. 所有文档类产出只能落在本次需求目录内，`/Users/lidejie/aiSpecs` 之外禁止写入与删除。
+7. 所有文档类产出只能落在本次需求目录内，`/Users/lidejie/aiSpecs` 之外禁止写入与删除；
+8. `step_4` Matrix 任务创建只允许走 `matrix` CLI，禁止用会话内 TaskCreate/todo 顶替；跳过必须由用户在创建/跳过弹窗中明确选择。
 
 ## 三、7个Agent分工清单
 1. agent-pipeline-controller：总控中枢，流程调度、统一弹窗、全局校验、异常捕获、闭环校验
@@ -75,7 +76,9 @@ step_5  定位仓库 → 脏工作区检查 → 确认基线分支（默认 rele
         → git worktree add {repo_root}/.worktrees/<slug> -b feat/<slug>
         → 回写 dev_workspace_path（= worktree 路径）
 
-step_7  校验暂存区不含 aiSpecs → commit → fetch --prune
+step_6  每完成一个实施任务（测试+编译通过）→ 本地 git add + git commit（禁 push）
+
+step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → fetch --prune
         → git push -u origin feat/<slug>   仅推开发分支，到此结束
         → worktree 默认保留
 ```
@@ -87,7 +90,8 @@ step_7  校验暂存区不含 aiSpecs → commit → fetch --prune
 4. `.worktrees/` 通过 `.git/info/exclude` 忽略，不改动受版本控制的 `.gitignore`；
 5. `--ff-only` 失败即暂停，禁止自动 merge/rebase 掩盖基线分叉；
 6. 禁止 `push --force`、禁止自动解决冲突、禁止 `git add` aiSpecs 需求目录；
-7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除共 6 个弹窗全部由总控弹出。
+7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除共 6 个弹窗全部由总控弹出；
+8. step_6 由 agent-tdd 在每个实施任务通过后做**本地增量提交**（禁 push）；step_7 只校验已有增量提交并 push，不再整仓一次 commit。
 
 ## 七、启动加载方式
 程序入口加载 `dev-pipeline-7agents.yaml`，自动递归读取agents目录下所有Agent配置与SKILL.md执行规则。
@@ -100,3 +104,12 @@ step_7  校验暂存区不含 aiSpecs → commit → fetch --prune
 - 导出落位：`{spec_dir}/requirements/<slug>.wiki.md`（由总控 step_1 解析的绝对路径）
 - 默认只读：export / markdown-content；**禁止**未经用户确认的 wiki overwrite / push / 删除
 - 降级：cli 未安装或未登录时，弹窗要求粘贴正文或提供本地 Markdown 路径
+
+## 九、外部 Skill 依赖（Matrix 任务创建）
+`step_4` Matrix 任务创建**唯一入口是 `matrix` CLI**（`matrix -- createMatrixTask`），禁止用会话内 TaskCreate/todo 顶替。
+
+- Skill 路径：用户本机 `matrix`（`~/.agents/skills/matrix/bin/matrix`，需加入 PATH）
+- 主责：总控在 step_4 调用；创建前执行 `matrix auth login` 校验登录
+- 流程：queryMatrixProjects → queryMatrixProjectSprints → createMatrixTask（回填需求设计摘要作为 description）
+- 产出：`matrix_task_id`；用户明确选择跳过时记录 `matrix_skipped: true`
+- 降级：CLI 未安装或登录失效时暂停流水线并弹窗引导，禁止静默跳过
