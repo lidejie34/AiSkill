@@ -102,8 +102,11 @@ pipeline_flow_sequence:
   step_7:
     dispatch_agent: agent-git
     pre_condition: agent-tdd confirm complete && workspace exist .git
-    action: verify_incremental_commits_exist && verify_staged_no_spec_dir && fetch_prune && push_dev_branch
+    action: verify_incremental_commits_exist && verify_staged_no_spec_dir && commit_confirm_dialog && fetch_prune && push_confirm_dialog && push_dev_branch
     block_rule: |
+      must pop commit-confirm and push-confirm dialogs (independent, not cached);
+      commit-confirm reject -> back to agent-tdd or manual fix, no silent commit;
+      push-confirm reject -> keep local commits, pause before push;
       remote dev branch diverged / conflict -> pause pipeline wait manual fix;
       push_only mode: forbid merge to base, forbid push --force
   step_8:

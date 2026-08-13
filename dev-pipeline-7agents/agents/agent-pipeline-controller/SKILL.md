@@ -74,8 +74,10 @@ dialog_owner: self
 
 ### step_7 收尾
 6. **worktree 是否移除**——默认保留；仅在用户明确确认后指示 agent-git 执行 `git worktree remove`。
+7. **提交前确认**——agent-git 上报本次要提交的文件清单与 diff 摘要，弹窗二选一：确认提交（执行 `git commit`）/ 需要调整（返回 agent-tdd 修改或用户手动处理）。**独立弹窗、不缓存**。
+8. **推送前确认**——提交完成后、执行 `git push` 前独立弹窗二选一：确认推送 / 暂不推送（保留本地提交并暂停）。**独立弹窗、不缓存**。
 
-> step_7 固定为「校验任务级增量提交 + push 开发分支」——本地提交在 step_6 由 agent-tdd 按任务完成，step_7 不再整体 commit。**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
+> step_7 固定为「校验任务级增量提交 → 提交前确认 → commit → 推送前确认 → push 开发分支」——本地提交在 step_6 由 agent-tdd 按任务完成，step_7 不再整体 commit。**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
 
 ### 暂停类上报（非选择弹窗，直接暂停并引导人工修复）
 - `git pull --ff-only` 失败（本地基线已分叉）
@@ -86,7 +88,7 @@ dialog_owner: self
 ## Git 与需求目录的边界校验
 1. `dev_workspace_path` 由 agent-git 回写为 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），总控须校验该值非空后才可调度 agent-tdd —— 否则代码会被写进主仓库而分支在 worktree 里，提交时抓不到改动；
 2. 校验 agent-tdd 的代码产出确实落在 `dev_workspace_path` 内、文档产出落在 `spec_dir` 内，越界即暂停；
-3. step_7 推送前校验：worktree 内已有 ≥1 个任务级增量提交（agent-tdd 在 step_6 完成）；暂存区不含 `/Users/lidejie/aiSpecs` 任何路径；仍有未提交改动须先补齐再推。
+3. step_7 推送前校验：worktree 内已有 ≥1 个任务级增量提交（agent-tdd 在 step_6 完成）；暂存区不含 `/Users/lidejie/aiSpecs` 任何路径；仍有未提交改动须先补齐再推；**提交前、推送前必须各弹窗确认一次（不缓存）**。
 
 ## 下游关联Agent
 agent-demand、agent-plan、agent-matrix、agent-git、agent-tdd、agent-final-ops

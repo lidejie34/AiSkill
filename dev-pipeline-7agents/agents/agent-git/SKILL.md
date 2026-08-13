@@ -36,16 +36,19 @@ dialog_owner: agent-pipeline-controller
 9. **提示用户**：worktree 目录为新建，`node_modules` / `target` 等依赖需在该目录重新安装；IDE 需打开该路径。
 
 ### 2. 编码后提交合并阶段（step_7）
-本阶段**只校验任务级增量提交并推送开发分支**，不合并基线；本地提交已在 step_6 由 agent-tdd 按任务完成。
+本阶段**只校验任务级增量提交并推送开发分支**，不合并基线；本地提交已在 step_6 由 agent-tdd 按任务完成。本阶段每步操作前都须「上报总控」停住等确认，未回传选择前禁止继续。
 
 1. **增量提交校验**：确认 worktree 内已有 ≥1 个任务级本地提交（`git log --oneline feat/<slug> --not origin/<base_branch>`）。为零则上报总控暂停，禁止擅自补一个大 commit。
 2. **改动校验**：`git status --short` 仍有未提交改动时上报总控三选一——由 agent-tdd 补提交 / 用户手动处理 / 终止；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件。
-3. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
-4. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。
-5. **基线状态仅作提示**：比对 `base_commit_sha` 与当前 `origin/<base_branch>`，落后时在 `git_op_log.json` 与终端输出提示信息，**不阻断、不自动合并**。
-6. **禁止合并基线**：不执行 `merge` 到基线、不推送基线。后续入基线由用户在流水线之外自行处理。
-7. **冲突处理**：自动检测冲突，标记 `conflict_flag` 上报总控，流水线暂停等待人工修复；**禁止**自动 `--force`、`--theirs/--ours` 等单边取舍。
-8. **worktree 收尾**：默认**保留** worktree（便于人工复查与后续手动入基线）。仅在总控回传用户确认后执行 `git worktree remove`；存在未提交改动时拒绝移除并上报。
+3. **提交前确认**：收集本次要提交的文件清单 + diff 摘要，**上报总控弹窗确认**后才执行 `git commit`；未获确认禁止提交。
+4. `git commit`（提交信息含 slug 与需求摘要要点）。
+5. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
+6. **推送前确认**：执行 `git push` 前**上报总控弹窗确认**；用户选择暂不推送则保留本地提交并暂停。
+7. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。
+8. **基线状态仅作提示**：比对 `base_commit_sha` 与当前 `origin/<base_branch>`，落后时在 `git_op_log.json` 与终端输出提示信息，**不阻断、不自动合并**。
+9. **禁止合并基线**：不执行 `merge` 到基线、不推送基线。后续入基线由用户在流水线之外自行处理。
+10. **冲突处理**：自动检测冲突，标记 `conflict_flag` 上报总控，流水线暂停等待人工修复；**禁止**自动 `--force`、`--theirs/--ours` 等单边取舍。
+11. **worktree 收尾**：默认**保留** worktree（便于人工复查与后续手动入基线）。仅在总控回传用户确认后执行 `git worktree remove`；存在未提交改动时拒绝移除并上报。
 
 ## 输入依赖
 目标仓库信息、需求 slug、reports_dir；`dev_branch` / `base_branch` 由本阶段生成后回写上下文，**不作为前置输入**
@@ -57,7 +60,7 @@ dialog_owner: agent-pipeline-controller
 
 ## 约束限制
 1. 无编译、部署、删除文件权限；
-2. 不自主弹窗——仓库选择、脏工作区处理、基线确认、分支命名、同名分支、入基线方式、worktree 移除，全部由总控弹出；
+2. 不自主弹窗——仓库选择、脏工作区处理、基线确认、分支命名、同名分支、入基线方式、worktree 移除、**提交前确认、推送前确认**，全部由总控弹出；
 3. 仅读取上下文，无法调度其他Agent；
 4. 文件写入权限仅用于在 `reports_dir` 落盘操作日志、以及向 `.git/info/exclude` 追加 worktree 忽略规则；
 5. 禁止 `push --force`、禁止自动解决冲突、禁止在 `--ff-only` 失败后自行 merge/rebase。

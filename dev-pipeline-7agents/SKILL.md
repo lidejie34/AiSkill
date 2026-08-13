@@ -20,7 +20,7 @@ global_constraints:
 
 ## 二、全局强制约束（所有Agent必须遵守，仅总控校验）
 1. 未完成需求澄清+方案设计，强制阻断编码阶段，无跳过入口；
-2. 高危操作（分支合并、生产部署、文档删除）必须独立弹窗确认，不可合并多决策；
+2. 高危操作（分支合并、生产部署、文档删除）必须独立弹窗确认，不可合并多决策；step_7 的提交与推送前同样必须独立弹窗确认（提交确认→commit，推送确认→push），禁止静默 commit / push；
 3. 单次阶段驳回仅重跑当前阶段；同一阶段连续两次驳回，可终止整条流水线；
 4. 核心业务强制DDD+BDD+完整TDD循环；轻量接口必须主流程单元测试；
 5. Git冲突、部署失败、文件异常直接暂停流水线，等待人工修复；
@@ -78,7 +78,8 @@ step_5  定位仓库 → 脏工作区检查 → 确认基线分支（默认 rele
 
 step_6  每完成一个实施任务（测试+编译通过）→ 本地 git add + git commit（禁 push）
 
-step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → fetch --prune
+step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → 提交前确认弹窗（文件清单+diff摘要）
+        → git commit → fetch --prune → 推送前确认弹窗
         → git push -u origin feat/<slug>   仅推开发分支，到此结束
         → worktree 默认保留
 ```
@@ -90,8 +91,9 @@ step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → fetch --
 4. `.worktrees/` 通过 `.git/info/exclude` 忽略，不改动受版本控制的 `.gitignore`；
 5. `--ff-only` 失败即暂停，禁止自动 merge/rebase 掩盖基线分叉；
 6. 禁止 `push --force`、禁止自动解决冲突、禁止 `git add` aiSpecs 需求目录；
-7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除共 6 个弹窗全部由总控弹出；
-8. step_6 由 agent-tdd 在每个实施任务通过后做**本地增量提交**（禁 push）；step_7 只校验已有增量提交并 push，不再整仓一次 commit。
+7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除、step_7 提交前确认、step_7 推送前确认共 8 个弹窗全部由总控弹出；
+8. step_6 由 agent-tdd 在每个实施任务通过后做**本地增量提交**（禁 push）；step_7 只校验已有增量提交并 push，不再整仓一次 commit；
+9. step_7 提交前弹窗须展示本次要提交的文件清单与 diff 摘要；推送前弹窗独立确认后才 push；两者都不缓存。
 
 ## 七、启动加载方式
 程序入口加载 `dev-pipeline-7agents.yaml`，自动递归读取agents目录下所有Agent配置与SKILL.md执行规则。
