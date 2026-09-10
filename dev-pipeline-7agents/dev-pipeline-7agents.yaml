@@ -95,27 +95,28 @@ pipeline_flow_sequence:
     dispatch_agent: agent-tdd
     pre_condition: agent-plan audit pass && dev_workspace_path resolved
     block_rule: |
-      no test deliverable -> block whole pipeline;
-      each implementation task pass -> leave changes UNCOMMITTED in worktree workspace (ZERO commit: forbid commit/push/merge/rebase/force);
-      all changes stay uncommitted -> handoff to step_7 for user review + unified commit once + push
+      no test deliverable -> block for core-domain paradigm only;
+      lite API: user-waived tests or empty test tree -> write debug checklist, do not block;
+      each implementation task pass -> optional local git commit (forbid push); leftover uncommitted goes to step_7
   step_7:
     dispatch_agent: agent-git
     pre_condition: agent-tdd confirm complete && workspace exist .git
-    action: verify_uncommitted_changes_exist && verify_no_spec_dir && commit_confirm_dialog && git_commit_unified_once && fetch_prune && push_confirm_dialog && push_dev_branch
+    action: verify_commits_or_uncommitted && verify_no_spec_dir && commit_confirm_if_dirty && fetch_prune && push_confirm_dialog && push_dev_branch
     block_rule: |
-      must pop commit-confirm and push-confirm dialogs (independent, not cached);
-      commit-confirm reject -> back to agent-tdd or manual fix, no silent commit;
-      push-confirm reject -> keep local commits, pause before push;
-      remote dev branch diverged / conflict -> pause pipeline wait manual fix;
-      push_only mode: forbid merge to base, forbid push --force
+      commit-confirm only when dirty; push-confirm always (independent, not cached);
+      remote diverged / conflict -> pause; forbid merge to base; forbid push --force
   step_8:
     dispatch_agent: agent-final-ops
     pre_condition: agent-git finish or no git repo
-    block_rule: deploy fail -> pause pipeline
+    action: single_closeout_checklist && optional_qa_merge_with_errorcode_scan && jean_from_git_op_log_repos && matrix_task_status
+    block_rule: |
+      one closeout dialog only; user may skip jean/matrix; deploy fail -> pause;
+      merging to publish_* requires ErrorCode/API collision scan first
   step_9:
     dispatch_agent: agent-final-ops
-    pre_condition: deploy step finish or skip deploy
-    block_rule: no block, single file confirm by controller
+    pre_condition: closeout finish or skip deploy
+    block_rule: docs default keep-all; delete only if closeout selected delete
+
   step_10:
     dispatch_agent: agent-pipeline-controller
     action: close_loop_check && generate pipeline report

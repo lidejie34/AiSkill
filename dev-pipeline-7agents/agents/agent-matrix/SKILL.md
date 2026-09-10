@@ -19,9 +19,14 @@ dialog_owner: agent-pipeline-controller
    - 选择项目空间、迭代周期、任务类型、优先级（`queryMatrixProjects` / `queryMatrixProjectSprints`）；
    - 自动回填需求设计摘要作为任务描述；
    - **预览任务信息（含完整 description）并由用户确认后再创建**；
-   - 调用 `matrix -- createMatrixTask ... --description=...`（CLI 已支持透传 description；纯文本会转 HTML）；勿绕过 description；
+   - 调用 `matrix -- createMatrixTask ... --description=...`；
    - 可选绑定测试负责人；
-4. 返回 `matrix_task_id` 或 `matrix_skipped: true` 至总控。
+4. 返回 `matrix_task_id` 或 `matrix_skipped: true` 至总控；
+5. **状态变更**（step_8）：走 `matrix -- updateMatrixTaskStatus --taskId= --status=`。
+   - 默认只改**任务**，不改需求；
+   - 「开发中」需带研发负责人及预计工时等页面必填项；
+   - `ifTest=0` 的「开发完成」不要强制测试人；
+   - CLI 无该子命令时勾选「我自己改 Matrix」，禁止瞎调未文档化接口。
 
 ## 输入依赖
 需求文档、技术方案文档、reports_dir（总控下发的绝对路径）

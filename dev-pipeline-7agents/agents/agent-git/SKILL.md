@@ -35,20 +35,29 @@ dialog_owner: agent-pipeline-controller
    - `repo_root` = 主仓库路径、`dev_branch`、`base_branch`、`base_commit_sha`、`worktree_path`
 9. **提示用户**：worktree 目录为新建，`node_modules` / `target` 等依赖需在该目录重新安装；IDE 需打开该路径。
 
-### 2. 编码后提交合并阶段（step_7）
-本阶段**校验开发期零提交留下的未提交改动并推送开发分支**，不合并基线；step_6 由 agent-tdd 全程零 commit，提交在本阶段用户确认后统一一次完成。本阶段每步操作前都须「上报总控」停住等确认，未回传选择前禁止继续。
+### 2. 编码后提交推送阶段（step_7）
+本阶段推送开发分支，不合并基线。step_6 可以已有任务级本地 commit。每步须上报总控。
 
-1. **未提交改动校验**：确认 worktree 内存在 ≥1 处未提交改动（`git status --porcelain`）。全为零则上报总控「开发未产出改动」暂停，禁止擅自 commit。
-2. **改动校验**：`git status --short` 汇总全部未提交改动（含 untracked）；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件，含 aiSpecs 路径则上报暂停。
-3. **提交前确认**：收集本次要提交的文件清单（含 untracked，排除 `.DS_Store` 等系统文件）+ diff 摘要，**上报总控弹窗确认**后才执行 `git add`（排除项）+ `git commit`；未获确认禁止提交。
-4. `git add`（排除系统文件如 `.DS_Store`）→ `git commit`（统一一次，提交信息含 slug 与需求摘要要点）。
-5. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
-6. **推送前确认**：执行 `git push` 前**上报总控弹窗确认**；用户选择暂不推送则保留本地提交并暂停。
-7. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。
-8. **基线状态仅作提示**：比对 `base_commit_sha` 与当前 `origin/<base_branch>`，落后时在 `git_op_log.json` 与终端输出提示信息，**不阻断、不自动合并**。
-9. **禁止合并基线**：不执行 `merge` 到基线、不推送基线。后续入基线由用户在流水线之外自行处理。
-10. **冲突处理**：自动检测冲突，标记 `conflict_flag` 上报总控，流水线暂停等待人工修复；**禁止**自动 `--force`、`--theirs/--ours` 等单边取舍。
-11. **worktree 收尾**：默认**保留** worktree（便于人工复查与后续手动入基线）。仅在总控回传用户确认后执行 `git worktree remove`；存在未提交改动时拒绝移除并上报。
+1. **产出校验**：`git log <base>..HEAD` 有提交，或 `git status --porcelain` 非空。两者皆空则上报「开发未产出」暂停。
+2. **改动校验**：未提交改动汇总；禁止 `git add` aiSpecs。
+3. **提交前确认**：仅当有未提交改动时弹窗；已全部 commit 则跳过。
+4. 有未提交时 `git add`（排除 `.DS_Store`）→ `git commit`。
+5. `git fetch origin --prune`；远端超前则暂停，禁止 force。
+6. **推送前确认**后 `git push -u origin feat/<slug>`。
+7. 基线落后只提示，不自动合并。
+8. **禁止在本阶段合并基线**。
+9. 冲突标记 `conflict_flag` 暂停。
+10. worktree 默认保留。
+
+### 2b. 合入 QA 分支（仅 step_8 勾选后）
+用户勾选合 `publish_qa` / `publish_qa_new` 等时：
+1. 独立 worktree 检出目标分支并对齐 `origin/<target>`。
+2. **合入前扫描**：对目标分支与功能分支 diff 同名错误码常量（如 `CODE10020`）、同路径 Controller，冲突则上报总控，禁止静默占用已有码。
+3. merge 功能分支；冲突暂停人工处理。
+4. 确认后 push 目标分支。
+5. 临时 merge worktree 用完删除。
+
+`git_op_log.json` 必须包含 `repos[]`：每个仓的 `repo_root`、`worktree_path`、`dev_branch`、拟部署的 `qa_branch`、角色说明，供 Jean 预填。多仓不得只写当前目录。
 
 ## 输入依赖
 目标仓库信息、需求 slug、reports_dir；`dev_branch` / `base_branch` 由本阶段生成后回写上下文，**不作为前置输入**

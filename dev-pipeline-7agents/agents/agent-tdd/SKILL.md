@@ -9,7 +9,7 @@ dialog_owner: agent-pipeline-controller
 ---
 # TDD编码测试Agent执行规范
 ## 核心定位
-强制必经编码阶段，管控双开发范式，守住禁止零测试交付底线。
+强制必经编码阶段，管控双开发范式；核心业务禁止零测试，轻量接口允许在用户约定下用联调清单替代单测。
 
 ## 执行流程
 1. 接收总控下发用户选择的开发范式；
@@ -20,16 +20,14 @@ dialog_owner: agent-pipeline-controller
 4. 覆盖正常、异常、边界、并发场景测试。
 ### 范式2 轻量接口/简单CRUD
 1. 先定义OpenAPI接口契约；
-2. 开发收尾强制编写主流程单元测试；
-3. 执行mvn/npm编译校验。
-### 开发期零提交（用户强制约定）
-开发全程**禁止任何 git commit / push**：每个实施任务「测试通过 + 编译通过」后，只把改动保留在 `dev_workspace_path` 工作区未提交状态（可 `git add` 暂存便于 diff 审查，但**不 commit**）。全部开发结束后上报总控，待用户审核后由 agent-git 在 step_7 统一提交一次。
-- **时机**：每个实施任务完成后改动留在工作区，不 commit、不 push；
-- **禁止操作**：`git commit`、`git push`、`git merge`、`git rebase`、`--force`、`branch -D`、`worktree remove`；仅可用 `git status` / `git diff` / `git add`（暂存）整理改动；
-- 改动互相覆盖/整理需要时：用 `git add` 更新暂存区或保留为未暂存，禁止自行 commit；
-- 文件冲突或异常：暂停流水线，上报总控引导人工修复，禁止用 `--amend`/`reset` 掩盖。
-2. 无测试产物则标记阻断交付，上报总控触发全局拦截规则；
+2. 默认编写主流程单元测试；**若用户明确不要测试类，或目标仓库测试目录为空/无惯例**，改为写入 `{reports_dir}` 联调检查清单（配置中心 Key、DDL、错误码是否与目标分支冲突），**不因缺少单测阻断**；
+3. 执行 mvn/npm 编译校验（仓库要求时）。
+### 开发期本地提交（禁 push）
+每个实施任务「编译通过（及约定测试通过）」后，**上报总控后由 agent-git 做一次本地 commit**（禁 push）。用户也可选择攒到 step_7。禁止 `git push` / `merge` / `rebase` / `--force`。
+用户删除测试类：视为「免单测」约定，停止再生成同类测试，更新联调清单。
+2. 核心业务仍无测试产物则阻断；范式2 在免单测约定下不阻断；
 3. 编码完成状态回传总控等待用户确认。
+4. **联调检查清单**（轻量接口必出，即使有单测也建议带上）：配置 UK、JSON 数组类配置、错误码是否占用目标环境已有码、主数据/集团名单。
 
 ## 输入依赖
 技术方案文档、代码工作目录路径 `dev_workspace_path`、文档目录 `design_dir` / `reports_dir`（总控下发的绝对路径）
@@ -48,8 +46,8 @@ dialog_owner: agent-pipeline-controller
 > `dev_workspace_path` 是 agent-git 在 step_5 创建的 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），不是主仓库根目录。写进主仓库会导致 step_7 提交时抓不到任何改动。依赖安装（npm install / mvn）也须在该目录执行。
 
 ## 约束限制
-1. 无Git提交/推送/合并/强推/分支删除权限；在 `dev_workspace_path` 内**禁止 `git commit`**，仅允许 `git add`（暂存）/ `git status` / `git diff`；统一提交由 step_7 agent-git 在用户审核后执行；
-2. 范式选择弹窗、编码完成确认弹窗由总控提供；
-3. 仅可读上下文，无法跳过测试流程；
+1. 无Git推送/合并/强推/分支删除权限；本地 commit 须上报总控后由 agent-git 执行，禁止本 Agent 自行 push；
+2. 范式选择弹窗、编码完成确认弹窗、免单测确认由总控提供；
+3. 仅可读上下文；免单测必须有用户明确表示或仓库惯例证据，禁止自行发明；
 4. 禁止把测试/实现代码写进 aiSpecs 需求目录，禁止把设计文档写进代码仓库；
 5. 未同时拿到 `dev_workspace_path` 与 `design_dir` 时上报总控，不得自行推断落位。

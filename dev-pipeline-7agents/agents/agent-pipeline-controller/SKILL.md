@@ -13,7 +13,10 @@ dialog_owner: self
 ## 强制执行规则
 1. 严格按照主文件 pipeline_flow_sequence 固定顺序执行，禁止跳步、调换阶段；
 2. 统一生成全部审核弹窗、高危操作弹窗，缓存用户选择，已确认步骤不再重复询问；**例外：基线分支确认不缓存，每次拉取新分支都必须重新询问**；
-3. 实时校验全局红线：禁止跳过需求设计、禁止零测试交付；
+3. 实时校验全局红线：禁止跳过需求设计；零测试仅在「核心业务」或用户未声明免单测时阻断。用户明确不要测试类 / 仓库无测试惯例时，用联调清单替代单测，并写入 `compile_check_report.json`；
+3b. **流程独占**：本流水线激活期间禁止套用 `finishing-a-development-branch` 三选一；合 QA / 提 PR / 保留分支全部进 step_8 收尾清单；
+3c. **阶段落盘**：每完成一步更新 `{spec_dir}/pipeline_meta.json` 的 `pipeline_stage`（如 `step_6_tdd`、`step_7_pushed`、`step_8_closeout`、`completed`），并追加短日志（commit sha、合入分支、跳过项）；
+3d. **增量需求**：`pipeline_stage` 未 `completed` 时用户追加接口，只补 design + 编码 + 提交，不重跑 step_2/3；
 4. 阶段驳回逻辑：单次驳回重跑当前Agent；连续两次驳回提供流水线终止选项；
 5. 捕获Git冲突、部署失败、文件读写异常，暂停流水线并弹窗引导人工修复；
 6. 流水线结束执行完整闭环校验，核对所有交付物齐全、无遗留异常后输出执行报告；
@@ -72,12 +75,22 @@ dialog_owner: self
 4. **开发分支命名确认**——默认 `feat/<slug>`（复用 step_1 的 slug），允许改名。
 5. **同名分支冲突**——本地或远端已存在时三选一：复用该分支 / 换个名字 / 终止；禁止静默复用。
 
-### step_7 收尾
-6. **worktree 是否移除**——默认保留；仅在用户明确确认后指示 agent-git 执行 `git worktree remove`。
-7. **提交前确认**——agent-git 上报本次要提交的文件清单与 diff 摘要，弹窗二选一：确认提交（执行 `git commit`）/ 需要调整（返回 agent-tdd 修改或用户手动处理）。**独立弹窗、不缓存**。
-8. **推送前确认**——提交完成后、执行 `git push` 前独立弹窗二选一：确认推送 / 暂不推送（保留本地提交并暂停）。**独立弹窗、不缓存**。
+### step_7 推送开发分支
+6. **worktree 是否移除**——默认保留；仅在用户明确确认后指示 agent-git 执行 `git worktree remove`。不要在收尾清单之前单独再问一遍。
+7. **提交前确认**——仅当工作区仍有未提交改动时弹出；已全部是任务级 commit 则跳过。
+8. **推送前确认**——`git push` 前独立弹窗。
 
-> step_7 固定为「校验存在未提交改动 → 提交前确认 → 统一 commit → 推送前确认 → push 开发分支」——开发期在 step_6 由 agent-tdd **全程零提交**（改动留在工作区未提交），step_7 在提交前确认后**统一一次 commit**。**不合并基线**，因此无入基线方式弹窗、无合并二次确认。入基线由用户在流水线之外自行处理。
+> step_7 只 push 开发分支。**不合并基线**。合 `publish_qa` / `publish_qa_new` / release 一律进 step_8。
+
+### step_8 收尾清单（一张表，禁止拆成 Matrix / Jean / 文档三轮问答）
+默认勾选可按上下文预填。用户说「开发完成，进入下一步」时**只弹这一张**：
+- 改 Matrix **任务**状态（开发完成）；默认不改需求状态
+- Jean 部署：按 `git_op_log.json` 的 `repos[]` 预填每个仓的 app 与 QA 分支（多仓必须全部列出，禁止只认当前 git remote）
+- 合入 QA 分支（若尚未合）：合入前对目标分支扫描同名错误码 / 同路径接口
+- 文档：默认全部保留
+- 以上任一项可勾「我自己处理 / 跳过」
+
+用户已合入 QA 时，合入项显示为已完成，不再问「要不要合回 base」。
 
 ### 暂停类上报（非选择弹窗，直接暂停并引导人工修复）
 - `git pull --ff-only` 失败（本地基线已分叉）
@@ -88,7 +101,7 @@ dialog_owner: self
 ## Git 与需求目录的边界校验
 1. `dev_workspace_path` 由 agent-git 回写为 **worktree 路径**（`{repo_root}/.worktrees/{slug}`），总控须校验该值非空后才可调度 agent-tdd —— 否则代码会被写进主仓库而分支在 worktree 里，提交时抓不到改动；
 2. 校验 agent-tdd 的代码产出确实落在 `dev_workspace_path` 内、文档产出落在 `spec_dir` 内，越界即暂停；
-3. step_7 提交前校验：worktree 内存在 ≥1 处未提交改动（agent-tdd 在 step_6 全程零提交，改动留在工作区）；改动不含 `/Users/lidejie/aiSpecs` 任何路径；**提交前、推送前必须各弹窗确认一次（不缓存），确认后由 agent-git 统一一次 commit**。
+3. step_7 推送前校验：开发分支相对基线有 ≥1 个提交，或工作区有未提交改动（先走提交确认）；改动不含 `/Users/lidejie/aiSpecs`；**有未提交才弹提交确认，push 前必须弹推送确认**。
 
 ## 下游关联Agent
 agent-demand、agent-plan、agent-matrix、agent-git、agent-tdd、agent-final-ops

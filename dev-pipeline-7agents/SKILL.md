@@ -22,7 +22,7 @@ global_constraints:
 1. 未完成需求澄清+方案设计，强制阻断编码阶段，无跳过入口；
 2. 高危操作（分支合并、生产部署、文档删除）必须独立弹窗确认，不可合并多决策；step_7 的提交与推送前同样必须独立弹窗确认（提交确认→commit，推送确认→push），禁止静默 commit / push；
 3. 单次阶段驳回仅重跑当前阶段；同一阶段连续两次驳回，可终止整条流水线；
-4. 核心业务强制DDD+BDD+完整TDD循环；轻量接口必须主流程单元测试；
+4. 核心业务强制DDD+BDD+完整TDD循环；轻量接口默认主流程单测。**仓库无测试惯例、或用户明确不要测试类时**，改为联调检查清单，不因缺少单元测试阻断交付；
 5. Git冲突、部署失败、文件异常直接暂停流水线，等待人工修复；
 6. 全局关闭skylog持久日志，仅终端临时输出执行信息；
 7. 所有文档类产出只能落在本次需求目录内，`/Users/lidejie/aiSpecs` 之外禁止写入与删除；
@@ -76,25 +76,28 @@ step_5  定位仓库 → 脏工作区检查 → 确认基线分支（默认 rele
         → git worktree add {repo_root}/.worktrees/<slug> -b feat/<slug>
         → 回写 dev_workspace_path（= worktree 路径）
 
-step_6  开发全程零 git commit：每个实施任务完成后只把改动留在 worktree 工作区未提交
-        （禁 commit/push）→ 全部开发结束上报总控，等用户审核后统一提交
+step_6  每个实施任务通过后允许本地 git add + git commit（禁 push）；用户也可选择攒到 step_7
+        同一 spec_dir 未关闭时追加改动：只补设计/编码，不重跑 demand
 
-step_7  校验工作区已有未提交改动 + 不含 aiSpecs → 提交前确认弹窗（文件清单+diff摘要）
-        → git commit（统一一次） → fetch --prune → 推送前确认弹窗
-        → git push -u origin feat/<slug>   仅推开发分支，到此结束
+step_7  校验已有任务级提交或未提交改动 + 不含 aiSpecs → 有未提交则弹窗确认后 commit
+        → fetch --prune → 推送前确认 → git push 开发分支；不合并基线
         → worktree 默认保留
+
+step_8  **一张收尾清单**（Matrix 任务状态 / Jean 部署 / 合 QA 分支 / 文档保留）一次确认
+        已合入 publish_* 则预填分支，不再套 finishing-a-development-branch 三选一
 ```
 
 要点：
 1. `dev_workspace_path` 指向 worktree 而非主仓库，是 agent-tdd 写代码的唯一依据；总控校验其非空后才可进 step_6；
 2. **基线分支每次拉取新分支都重新确认**，默认选中远端 `origin/release`（不存在时回退 `origin/HEAD` → main/master/develop）；此为「已确认不再询问」缓存规则的明确例外；
-3. **step_7 只 commit + push 开发分支**，不合并基线、不推送基线；入基线由用户在流水线外自行处理；
+3. **step_7 只处理开发分支 commit + push**，不合并基线、不推送基线；合 QA/基线放进 step_8 收尾清单，由用户勾选；
 4. `.worktrees/` 通过 `.git/info/exclude` 忽略，不改动受版本控制的 `.gitignore`；
 5. `--ff-only` 失败即暂停，禁止自动 merge/rebase 掩盖基线分叉；
 6. 禁止 `push --force`、禁止自动解决冲突、禁止 `git add` aiSpecs 需求目录；
-7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除、step_7 提交前确认、step_7 推送前确认共 8 个弹窗全部由总控弹出；
-8. step_6 由 agent-tdd **全程零 git commit**（改动留在 worktree 工作区未提交，禁 push）；step_7 由 agent-git 在提交前确认之后做**统一一次 commit** 再 push；
-9. step_7 提交前弹窗须展示本次要提交的文件清单与 diff 摘要；推送前弹窗独立确认后才 push；两者都不缓存。
+7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除、step_7 提交/推送确认、step_8 收尾清单由总控弹出；
+8. step_6 **允许任务级本地 commit**（禁 push）；step_7 对剩余未提交改动确认后补 commit，再 push；
+9. 每跨一个 step **必须回写** `{spec_dir}/pipeline_meta.json` 的 `pipeline_stage`，禁止卡在 `step_1_wiki_export`；
+10. 本流水线运行期间**禁止**再套用 `finishing-a-development-branch` 的三选一菜单。
 
 ## 七、启动加载方式
 程序入口加载 `dev-pipeline-7agents.yaml`，自动递归读取agents目录下所有Agent配置与SKILL.md执行规则。
@@ -116,3 +119,4 @@ step_7  校验工作区已有未提交改动 + 不含 aiSpecs → 提交前确�
 - 流程：queryMatrixProjects → queryMatrixProjectSprints → createMatrixTask（回填需求设计摘要作为 description）
 - 产出：`matrix_task_id`；用户明确选择跳过时记录 `matrix_skipped: true`
 - 降级：CLI 未安装或登录失效时暂停流水线并弹窗引导，禁止静默跳过
+- 收尾改状态走 `matrix -- updateMatrixTaskStatus`（任务「开发中/开发完成」）；**默认只改任务，不改需求状态**。`ifTest=0` 时不要按「必须填测试人」卡死。CLI 尚未实现该子命令时，收尾清单提供「我自己改 Matrix」跳过，禁止 silently 调未文档化的私有接口。
