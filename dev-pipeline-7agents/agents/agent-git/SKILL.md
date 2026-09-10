@@ -36,12 +36,12 @@ dialog_owner: agent-pipeline-controller
 9. **提示用户**：worktree 目录为新建，`node_modules` / `target` 等依赖需在该目录重新安装；IDE 需打开该路径。
 
 ### 2. 编码后提交合并阶段（step_7）
-本阶段**只校验任务级增量提交并推送开发分支**，不合并基线；本地提交已在 step_6 由 agent-tdd 按任务完成。本阶段每步操作前都须「上报总控」停住等确认，未回传选择前禁止继续。
+本阶段**校验开发期零提交留下的未提交改动并推送开发分支**，不合并基线；step_6 由 agent-tdd 全程零 commit，提交在本阶段用户确认后统一一次完成。本阶段每步操作前都须「上报总控」停住等确认，未回传选择前禁止继续。
 
-1. **增量提交校验**：确认 worktree 内已有 ≥1 个任务级本地提交（`git log --oneline feat/<slug> --not origin/<base_branch>`）。为零则上报总控暂停，禁止擅自补一个大 commit。
-2. **改动校验**：`git status --short` 仍有未提交改动时上报总控三选一——由 agent-tdd 补提交 / 用户手动处理 / 终止；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件。
-3. **提交前确认**：收集本次要提交的文件清单 + diff 摘要，**上报总控弹窗确认**后才执行 `git commit`；未获确认禁止提交。
-4. `git commit`（提交信息含 slug 与需求摘要要点）。
+1. **未提交改动校验**：确认 worktree 内存在 ≥1 处未提交改动（`git status --porcelain`）。全为零则上报总控「开发未产出改动」暂停，禁止擅自 commit。
+2. **改动校验**：`git status --short` 汇总全部未提交改动（含 untracked）；`/Users/lidejie/aiSpecs` 在仓库之外，**禁止** `git add` 需求目录任何文件，含 aiSpecs 路径则上报暂停。
+3. **提交前确认**：收集本次要提交的文件清单（含 untracked，排除 `.DS_Store` 等系统文件）+ diff 摘要，**上报总控弹窗确认**后才执行 `git add`（排除项）+ `git commit`；未获确认禁止提交。
+4. `git add`（排除系统文件如 `.DS_Store`）→ `git commit`（统一一次，提交信息含 slug 与需求摘要要点）。
 5. **推送前刷新远端**：`git fetch origin --prune`。若远端同名开发分支已被他人推进导致本地落后，标记 `conflict_flag` 上报总控暂停，**禁止** `push --force` 覆盖。
 6. **推送前确认**：执行 `git push` 前**上报总控弹窗确认**；用户选择暂不推送则保留本地提交并暂停。
 7. **推送开发分支**：`git push -u origin feat/<slug>`，到此结束。

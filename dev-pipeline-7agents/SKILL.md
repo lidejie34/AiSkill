@@ -76,10 +76,11 @@ step_5  定位仓库 → 脏工作区检查 → 确认基线分支（默认 rele
         → git worktree add {repo_root}/.worktrees/<slug> -b feat/<slug>
         → 回写 dev_workspace_path（= worktree 路径）
 
-step_6  每完成一个实施任务（测试+编译通过）→ 本地 git add + git commit（禁 push）
+step_6  开发全程零 git commit：每个实施任务完成后只把改动留在 worktree 工作区未提交
+        （禁 commit/push）→ 全部开发结束上报总控，等用户审核后统一提交
 
-step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → 提交前确认弹窗（文件清单+diff摘要）
-        → git commit → fetch --prune → 推送前确认弹窗
+step_7  校验工作区已有未提交改动 + 不含 aiSpecs → 提交前确认弹窗（文件清单+diff摘要）
+        → git commit（统一一次） → fetch --prune → 推送前确认弹窗
         → git push -u origin feat/<slug>   仅推开发分支，到此结束
         → worktree 默认保留
 ```
@@ -92,7 +93,7 @@ step_7  校验已有任务级增量提交 + 暂存区不含 aiSpecs → 提交�
 5. `--ff-only` 失败即暂停，禁止自动 merge/rebase 掩盖基线分叉；
 6. 禁止 `push --force`、禁止自动解决冲突、禁止 `git add` aiSpecs 需求目录；
 7. 仓库选择、脏工作区、基线确认、分支命名、同名分支、worktree 移除、step_7 提交前确认、step_7 推送前确认共 8 个弹窗全部由总控弹出；
-8. step_6 由 agent-tdd 在每个实施任务通过后做**本地增量提交**（禁 push）；step_7 只校验已有增量提交并 push，不再整仓一次 commit；
+8. step_6 由 agent-tdd **全程零 git commit**（改动留在 worktree 工作区未提交，禁 push）；step_7 由 agent-git 在提交前确认之后做**统一一次 commit** 再 push；
 9. step_7 提交前弹窗须展示本次要提交的文件清单与 diff 摘要；推送前弹窗独立确认后才 push；两者都不缓存。
 
 ## 七、启动加载方式

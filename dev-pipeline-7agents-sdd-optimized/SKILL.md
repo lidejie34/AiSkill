@@ -1,5 +1,6 @@
 ---
 name: dev-pipeline-7agents-sdd-optimized
+description: SDD分级优化版7Agent研发流水线：内置Full/Lite/Off三级自动分级，配合交付物缓存复用、增量diff审查、低风险阶段审查白名单，在保留需求先行与强制TDD的前提下降低执行耗时与Token消耗。当需要按需求规模自动伸缩流程强度的完整研发流程时使用。
 display_name: SDD分级优化版7Agent标准化研发流水线
 priority: 100
 auto_bootstrap: true
